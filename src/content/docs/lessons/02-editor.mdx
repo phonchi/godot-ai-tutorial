@@ -1,0 +1,149 @@
+---
+title: "02｜編輯器、節點與場景"
+description: "認識 Godot 編輯器的主要面板，理解節點、場景樹與場景實例化的關係，並親手組出第一個可以執行的場景。"
+sidebar:
+  order: 2
+---
+
+import LessonDiagram from '../../../components/LessonDiagram.astro';
+import AgentTask from '../../../components/AgentTask.astro';
+
+## 學習目標
+
+1. 說出 Godot 編輯器中場景、檔案系統、檢查器、節點四個面板各自的用途。
+2. 理解「節點」是最小的功能積木，「場景」是一棵存成檔案的節點樹。
+3. 會新增節點、調整屬性、存檔，並設定主場景。
+4. 會把一個場景拖進另一個場景當作「實例」重複使用。
+5. 知道 `.tscn` 是文字檔，以及為什麼新手階段不建議手改。
+
+## 核心概念
+
+### 節點：一個節點只做一件事
+
+Godot 的所有東西都是節點（Node）。`Sprite2D` 負責顯示圖片、`CollisionShape2D` 負責定義碰撞形狀、`Timer` 負責倒數、`Label` 負責顯示文字。每個節點只做一件事，你把它們組合起來，就得到有完整功能的物件。
+
+節點之間是**父子關係**：子節點會跟著父節點移動、旋轉、縮放。例如把 `Sprite2D` 放在 `CharacterBody2D` 底下，角色移動時圖片就會跟著走。
+
+### 場景：存成檔案的一棵節點樹
+
+把一組節點存成 `.tscn` 檔，就是一個場景。場景有兩個重要特性：
+
+- **可以單獨執行**：玩家、星星、敵人都可以各自做成場景，單獨按 F6 測試。
+- **可以被實例化**：把 `star.tscn` 拖進主場景十次，就有十顆星星；之後修改 `star.tscn`，十顆會一起改變。
+
+這就是 Godot 的核心設計：用小場景組成大場景。整個遊戲執行時，所有場景合併成一棵「場景樹」（SceneTree）。
+
+<LessonDiagram kind="scene" />
+
+## 動手操作
+
+### 步驟 1：認識編輯器配置
+
+開啟第 1 章建立的測試專案，預設配置如下：
+
+| 位置 | 面板 | 用途 |
+| --- | --- | --- |
+| 左上 | 場景（Scene） | 目前場景的節點樹，新增、刪除、拖曳調整父子關係 |
+| 左下 | 檔案系統（FileSystem） | 專案中的所有檔案，路徑以 `res://` 開頭 |
+| 中央 | 視窗（Viewport） | 上方可切換 2D、3D、Script、AssetLib 工作區 |
+| 右側 | 檢查器（Inspector） | 選取節點的所有屬性 |
+| 右側分頁 | 節點（Node） | 訊號與群組設定 |
+| 下方 | 輸出、除錯器等 | 執行時的訊息、錯誤與監視器 |
+
+`res://` 代表專案根目錄，也就是 `project.godot` 所在的資料夾。程式中引用資源時都用這個前綴，不要寫成電腦上的絕對路徑。
+
+### 步驟 2：組出第一個場景
+
+1. 在場景面板按「2D 場景」，建立根節點 `Node2D`，雙擊改名為 `Hello`。
+2. 對 `Hello` 按右鍵 →「新增子節點」，搜尋 `Sprite2D` 加入。
+3. 從檔案系統把 `icon.svg`（新專案內建的 Godot 圖示）拖到檢查器的 `Texture` 欄位。
+4. 在 2D 視窗中拖動圖示到畫面中央附近。注意畫面中的紫色框代表遊戲視窗的範圍。
+5. 再對 `Hello` 新增子節點 `Label`，在檢查器的 `Text` 欄位輸入「你好，Godot」。
+6. 按 `Ctrl+S` 存成 `res://hello.tscn`。
+
+### 步驟 3：調整屬性並觀察父子關係
+
+1. 選取 `Sprite2D`，在檢查器展開 `Transform`，把 `Rotation` 改成 `45`，`Scale` 改成 `(2, 2)`。
+2. 把 `Label` 拖到 `Sprite2D` 底下成為它的子節點，再旋轉 `Sprite2D`，觀察文字也一起旋轉。
+3. 把 `Label` 拖回 `Hello` 底下，恢復原狀。
+
+### 步驟 4：執行場景
+
+- **F6**（執行目前場景）：只執行你正在編輯的場景。
+- **F5**（執行專案）：執行主場景。第一次按會詢問要以哪個場景為主場景，選「選擇目前場景」即可。日後可在「專案設定 → 應用程式 → 執行 → 主場景」修改。
+
+### 步驟 5：實例化
+
+1. 新增另一個場景，根節點 `Node2D`，命名 `World`，存成 `world.tscn`。
+2. 從檔案系統把 `hello.tscn` 拖進 `World` 三次，擺在不同位置。
+3. 執行 `World`，會看到三組圖示與文字。
+4. 回到 `hello.tscn`，把 `Label` 文字改掉並存檔，再執行 `World`，三組都會一起更新。
+
+在 `World` 的場景面板中，實例旁邊有一個「場景」圖示，點下去可以直接開啟原始場景編輯。
+
+## 程式碼解說：打開 .tscn 看看
+
+場景檔是文字格式，可以用任何編輯器打開。下面是一個簡化示意（實際內容會依版本與操作而不同）：
+
+```ini
+[gd_scene load_steps=2 format=3 uid="uid://..."]
+
+[ext_resource type="Texture2D" uid="uid://..." path="res://icon.svg" id="1_abcde"]
+
+[node name="Hello" type="Node2D"]
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+position = Vector2(576, 324)
+texture = ExtResource("1_abcde")
+
+[node name="Label" type="Label" parent="."]
+text = "你好，Godot"
+```
+
+- `ext_resource` 列出這個場景引用的外部檔案，並給它一個編號。
+- 每個 `[node]` 區塊代表一個節點，`parent="."` 表示父節點是根節點。
+- 只有和預設值不同的屬性才會被寫進檔案。
+
+這讓 agent 可以**讀懂**場景結構，是很大的優點。但手動修改時，編號、UID 或父子路徑只要有一處錯誤，場景就可能無法開啟。新手階段的原則是：**讓 agent 讀場景，結構修改在編輯器中進行**。
+
+## 交給 agent 的提示詞
+
+<AgentTask
+  title="用文字描述場景樹"
+  prompt={`請閱讀專案中所有 .tscn 檔，不要修改任何檔案。
+對每一個場景：
+1. 用縮排清單畫出節點樹，標示每個節點的名稱與型別。
+2. 標出哪些節點是其他場景的實例，以及來源檔案路徑。
+3. 列出有附加腳本的節點與腳本路徑。
+4. 告訴我專案設定中的主場景是哪一個（讀 project.godot 的 run/main_scene）。
+最後用兩三句話說明這個專案的場景是如何組合起來的。`}
+/>
+
+## 自我檢查
+
+- [ ] 我知道 `res://` 指的是哪個資料夾。
+- [ ] 我能分辨 F5 與 F6 的差別。
+- [ ] 修改子場景後，所有實例都會更新，我實際驗證過。
+- [ ] 我能從 `.tscn` 檔中找到某個節點的父節點是誰。
+- [ ] 我知道節點面板中可以設定訊號與群組。
+
+## 練習
+
+1. 在 `hello.tscn` 中加一個 `ColorRect` 當背景，調整它在場景樹中的順序，觀察「排在下面的節點會畫在上面」這個規則。
+2. 在 `World` 中選取其中一個 `Hello` 實例，單獨修改它的位置與 `Label` 文字（只在這個實例上覆寫），觀察它和其他實例的差別；再在檢查器中找到「還原」圖示把它復原。
+3. 請 agent 用上面的提示詞描述你的專案，比對它的回答與你在編輯器看到的是否一致。
+
+## 常見錯誤與限制
+
+- **場景執行時一片灰**：節點位置在紫色框外，或是忘了存檔就執行舊版本。
+- **在外部移動或改名檔案**：直接用檔案總管或 `mv` 移動檔案，可能讓其他場景找不到引用。請在 Godot 的檔案系統面板中移動，編輯器會自動更新引用。
+- **`.godot/` 資料夾**：這是編輯器的快取與匯入結果，可以隨時重建，不要手動修改，也不要放進版本控制（第 5 章會設定）。
+- **節點型別選錯**：例如建了 `Node` 卻想要有位置，`Node` 沒有座標屬性；2D 物件請用 `Node2D` 或其子型別。可以對節點按右鍵「變更型別」修正。
+
+## 官方參考
+
+- 節點與場景：https://docs.godotengine.org/en/4.7/getting_started/step_by_step/nodes_and_scenes.html
+- 建立實例：https://docs.godotengine.org/en/4.7/getting_started/step_by_step/instancing.html
+- 編輯器介紹：https://docs.godotengine.org/en/4.7/getting_started/introduction/first_look_at_the_editor.html
+- TSCN 檔案格式：https://docs.godotengine.org/en/4.7/contributing/development/file_formats/tscn.html
+- 繁體中文入門：https://docs.godotengine.org/zh-tw/4.x/about/introduction.html

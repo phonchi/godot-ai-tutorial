@@ -1,0 +1,20 @@
+---
+interface Props { title?: string; prompt: string; }
+const {title='交給 AI agent 的任務',prompt}=Astro.props;
+---
+<aside class="task-card" aria-label={title}>
+ <div class="task-head"><strong>{title}</strong><button class="task-copy" type="button">複製任務</button></div>
+ <pre class="task-prompt">{prompt}</pre>
+ <details class="task-clients"><summary>Claude Code／Codex 操作方式</summary>
+ <p>在同一個 Godot 專案目錄開啟終端機，依你的工具執行 <code>claude</code> 或 <code>codex</code>，再貼入上方任務。先確認工作目錄與修改範圍，完成後閱讀差異並回到 Godot 執行。</p>
+ <p>Claude Code 的專案規則使用 <code>CLAUDE.md</code>；Codex 使用 <code>AGENTS.md</code>。兩者保留同一份遊戲規則與驗收條件。</p>
+ </details>
+</aside>
+<script>
+ document.querySelectorAll<HTMLButtonElement>('.task-copy').forEach(button=>{
+ button.addEventListener('click',async()=>{
+ const text=button.closest('.task-card')?.querySelector('.task-prompt')?.textContent||'';
+ try {await navigator.clipboard.writeText(text);button.textContent='已複製';setTimeout(()=>button.textContent='複製任務',1800)}
+ catch {button.textContent='請選取任務文字複製';}
+ });});
+</script>

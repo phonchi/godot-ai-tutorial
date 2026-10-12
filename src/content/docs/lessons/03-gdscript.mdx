@@ -1,0 +1,161 @@
+---
+title: "03｜GDScript 快速上手"
+description: "給會基礎程式的學習者：用對照其他語言的方式，快速掌握 GDScript 的變數、型別、函式、陣列與字典、列舉，以及 @export、@onready 等 Godot 專屬語法。"
+sidebar:
+  order: 3
+---
+
+import LessonDiagram from '../../../components/LessonDiagram.astro';
+import AgentTask from '../../../components/AgentTask.astro';
+
+## 學習目標
+
+1. 讀懂一個典型的 GDScript 腳本結構：`extends`、成員變數、函式。
+2. 會使用型別標註與 `:=` 型別推斷，知道它們如何幫助抓錯。
+3. 會用陣列、字典、列舉（`enum`）與 `match`。
+4. 會用 `@export` 把變數放到檢查器，用 `@onready` 與 `$` 取得子節點。
+5. 知道 GDScript 和你熟悉的語言（Python、JavaScript 等）有哪些不同。
+
+## 核心概念
+
+### 一個腳本就是一個類別
+
+GDScript 是 Godot 專用的語言，語法接近 Python：用縮排表示區塊、沒有分號。每個 `.gd` 檔案就是一個類別，第一行 `extends` 決定它繼承哪個節點型別。把腳本附加到節點上，那個節點就擁有了腳本裡的變數與函式。
+
+<LessonDiagram kind="scene" />
+
+圖中每個節點都可以附加一個腳本；腳本透過 `extends` 取得該節點型別的所有內建功能（例如 `CharacterBody2D` 的 `velocity` 與 `move_and_slide()`），再加上你自己的邏輯。
+
+### 和其他語言的快速對照
+
+| 概念 | GDScript | Python | JavaScript |
+| --- | --- | --- | --- |
+| 宣告變數 | `var hp := 3` | `hp = 3` | `let hp = 3` |
+| 常數 | `const MAX := 10` | 慣例大寫 | `const MAX = 10` |
+| 函式 | `func add(a: int, b: int) -> int:` | `def add(a, b):` | `function add(a, b)` |
+| 自身 | `self`（通常可省略） | `self` | `this` |
+| 空值 | `null` | `None` | `null` |
+| 邏輯運算 | `and`、`or`、`not` | 同左 | `&&`、`!` 等符號 |
+| 輸出 | `print("x=", x)` | `print` | `console.log` |
+
+## 動手操作
+
+### 步驟 1：建立練習腳本
+
+1. 新增場景，根節點 `Node`，命名 `Practice`，存成 `practice.tscn`。
+2. 對它附加腳本 `practice.gd`。Godot 內建的腳本編輯器會自動開啟。
+3. 把下面的程式貼上，按 F6 執行，在下方「輸出」面板觀察結果。
+
+```gdscript
+# 示範概念：GDScript 基本語法
+extends Node
+
+enum State { PLAYING, WON, LOST }
+
+const GOAL := 10
+
+var score: int = 0
+var state := State.PLAYING
+var inventory: Array[String] = ["鑰匙", "地圖"]
+var prices := {"星星": 1, "寶石": 5}
+
+func _ready() -> void:
+	add_score(3)
+	add_score(8)
+	print("背包：", inventory)
+	for item_name in prices:
+		print(item_name, " 值 ", prices[item_name], " 分")
+	describe_state()
+
+func add_score(amount: int) -> void:
+	score += amount
+	print("分數：", score)
+	if score >= GOAL:
+		state = State.WON
+
+func describe_state() -> void:
+	match state:
+		State.PLAYING:
+			print("遊戲進行中")
+		State.WON:
+			print("你贏了！")
+		State.LOST:
+			print("遊戲結束")
+```
+
+### 步驟 2：@export 與檢查器
+
+把根節點改成 `Node2D`（右鍵「變更型別」），腳本第一行改成 `extends Node2D`，再加入：
+
+```gdscript
+@export var speed: float = 200.0
+@export var player_name := "小星"
+@export_range(1, 10) var lives := 3
+```
+
+存檔後選取根節點，檢查器最上方會出現這三個欄位。在檢查器改值不需要改程式，對調整遊戲手感非常方便。同一個場景的不同實例，也可以各自設定不同的值。
+
+### 步驟 3：取得子節點
+
+在 `Practice` 底下加一個 `Label` 節點，然後在腳本中：
+
+```gdscript
+@onready var label: Label = $Label
+
+func _ready() -> void:
+	label.text = "分數：%d" % score
+```
+
+- `$Label` 是 `get_node("Label")` 的簡寫，路徑相對於目前節點。更深的節點寫成 `$UI/ScoreLabel`。
+- `@onready` 表示「等到節點準備好（`_ready` 之前）才賦值」。如果不加，腳本初始化時子節點還不存在，會得到 `null`。
+- 你也可以在場景面板對節點按右鍵選「以唯一名稱存取」，之後用 `%Label` 取得，即使節點被搬到其他父節點下也不會失效。
+
+## 程式碼解說
+
+- **縮排**：GDScript 預設用 Tab 縮排。同一個檔案中混用 Tab 與空白會造成解析錯誤，編輯器設定中可以調整，但整個專案要一致。
+- **型別標註**：`var score: int = 0` 明確指定型別；`var state := State.PLAYING` 用 `:=` 讓 Godot 從右邊推斷型別。兩者都會讓編輯器在你把字串賦值給整數時立即報錯，也讓自動完成更準確。新手與 agent 合作時特別建議使用，因為錯誤能在執行前被發現。
+- **`Array[String]`**：有型別的陣列，只能放字串。
+- **字典**：用大括號建立，迭代時拿到的是鍵（key）。
+- **`enum` 與 `match`**：`match` 類似其他語言的 `switch`，但不需要 `break`。用列舉表示遊戲狀態，比用字串 "won"、"lost" 更不容易打錯字。
+- **字串格式化**：`"分數：%d" % score` 使用 `%` 運算子，`%d` 代表整數、`%s` 代表字串、`%.2f` 代表兩位小數。
+- **`-> void`**：函式的回傳型別，`void` 表示不回傳值。
+
+## 交給 agent 的提示詞
+
+<AgentTask
+  title="請 agent 當 GDScript 助教"
+  prompt={`我會基礎程式但剛開始學 GDScript。請閱讀 practice.gd，不要修改檔案。
+1. 逐段解釋這個腳本做了什麼，對應到 Python 或 JavaScript 中的類似寫法。
+2. 找出所有沒有型別標註的變數與函式參數，建議加上什麼型別，並說明理由。
+3. 出三題小練習給我，每題要求我修改 practice.gd 的一小部分，並附上我完成後可以在輸出面板看到的預期結果。
+請不要直接給答案，等我做完再幫我檢查。`}
+/>
+
+## 自我檢查
+
+- [ ] 我知道 `extends` 決定了腳本能使用哪些內建屬性與函式。
+- [ ] 我能解釋為什麼取得子節點要用 `@onready`。
+- [ ] 我會在檢查器中看到並調整 `@export` 變數。
+- [ ] 我能用 `enum` 與 `match` 寫出三種狀態的判斷。
+- [ ] 我的腳本縮排統一使用 Tab。
+
+## 練習
+
+1. 寫一個函式 `take_damage(amount: int)`，讓 `lives` 減少，歸零時把 `state` 改成 `State.LOST` 並印出訊息。
+2. 用迴圈與 `range(10)` 產生一個包含 10 個 `Vector2` 位置的陣列，每個位置的 X 間隔 64 像素，印出來確認。
+3. 把 `prices` 字典中價格最高的物品名稱找出來並印出。
+
+## 常見錯誤與限制
+
+- **`Invalid get index 'text' (on base: 'Nil')`**：通常是 `$Label` 路徑錯誤或少了 `@onready`。
+- **`Mixed use of tabs and spaces for indentation`**：從網頁複製程式時最常發生，用編輯器的「轉換縮排為 Tab」修正。
+- **把 Python 的習慣帶進來**：GDScript 的多重條件寫成 `elif`；沒有列表推導式（list comprehension），請改用迴圈或 `Array.map()`、`Array.filter()`；取得長度慣用 `array.size()`。
+- **在全域範圍寫執行邏輯**：腳本最外層只能宣告變數、常數、函式等，要執行的程式必須放在 `_ready()` 等函式中。
+- **舊版教學**：Godot 3 的 `export var`、`onready var`、`yield` 在 Godot 4 已改成 `@export`、`@onready`、`await`。搜尋網路資料時請確認是 Godot 4 版本。
+
+## 官方參考
+
+- GDScript 參考：https://docs.godotengine.org/en/4.7/tutorials/scripting/gdscript/gdscript_basics.html
+- 靜態型別：https://docs.godotengine.org/en/4.7/tutorials/scripting/gdscript/static_typing.html
+- GDScript 匯出屬性：https://docs.godotengine.org/en/4.7/tutorials/scripting/gdscript/gdscript_exports.html
+- GDScript 風格指南：https://docs.godotengine.org/en/4.7/tutorials/scripting/gdscript/gdscript_styleguide.html

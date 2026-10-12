@@ -1,0 +1,27 @@
+[
+  {
+    "kind": "scene",
+    "exit_code": 0,
+    "output": "OK /home/phonchi/godot/.tools/diagram-check/scene.html\n"
+  },
+  {
+    "kind": "signal",
+    "exit_code": 0,
+    "output": "OK /home/phonchi/godot/.tools/diagram-check/signal.html\n"
+  },
+  {
+    "kind": "workflow",
+    "exit_code": 0,
+    "output": "OK /home/phonchi/godot/.tools/diagram-check/workflow.html\n"
+  },
+  {
+    "kind": "state",
+    "exit_code": 0,
+    "output": "OK /home/phonchi/godot/.tools/diagram-check/state.html\n"
+  },
+  {
+    "kind": "coordinates",
+    "exit_code": 0,
+    "output": "OK /home/phonchi/godot/.tools/diagram-check/coordinates.html\n"
+  }
+]

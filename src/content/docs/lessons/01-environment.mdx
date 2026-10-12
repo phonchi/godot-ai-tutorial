@@ -1,0 +1,251 @@
+---
+title: "01｜環境準備：WSL2/WSLg、Godot 4.7.2 CLI 與 AI agent 首次設定"
+description: "在 Linux 或 Windows WSL2（WSLg）上安裝本課程指定的 Godot 4.7.2 stable（標準版）、對應的匯出範本與命令列工具，並以既有訂閱完成 Claude Code 與 Codex CLI 的登入設定。"
+sidebar:
+  order: 1
+---
+
+import LessonDiagram from '../../../components/LessonDiagram.astro';
+import AgentTask from '../../../components/AgentTask.astro';
+
+## 學習目標
+
+完成本章後，你應該能夠：
+
+1. 在 Linux 或 WSL2 + WSLg 中**實際開啟 Godot 編輯器視窗**，證明圖形環境可用。
+2. 安裝本課程指定的 **Godot 4.7.2 stable 標準版**（GDScript，非 .NET 版），讓終端機輸入 `godot --version` 就能看到版本。
+3. 安裝與編輯器**版本完全相同**的 4.7.2 匯出範本，為之後的 Web 匯出做準備。
+4. 用命令列（CLI）匯入專案、執行場景、以 headless 模式檢查錯誤，並把日誌寫到指定檔案。
+5. 以既有訂閱登入 Claude Code 與 Codex CLI，確認兩者都**沒有**走按量計費的 API 金鑰。
+
+## 核心概念：三個工具各自負責什麼
+
+這門課的工作環境由三個部分組成：
+
+- **Godot 編輯器**：你用滑鼠建立場景、調整節點、按下執行看結果。
+- **Godot CLI**：同一個 `godot` 執行檔加上參數，就能不開編輯器直接匯入、執行或匯出專案。AI agent 主要透過它來「驗證」。
+- **AI agent（Claude Code 或 Codex CLI）**：在終端機中讀取與修改專案檔案、執行指令、回報結果。兩者在本課程中地位相同，你選一個熟悉的即可。
+
+<LessonDiagram kind="workflow" />
+
+圖中的循環是：你描述需求 → agent 讀檔並提出修改 → 你檢查差異 → agent 或你用 Godot CLI 執行 → 你用眼睛確認畫面。請記住一個原則：**agent 能不能「看到畫面」取決於它手上的工具與你給的權限**，純 headless 執行只能看到文字日誌，不能證明畫面正確。
+
+## 本課程的固定環境
+
+| 項目 | 本課程設定 |
+| --- | --- |
+| Godot 版本 | 4.7.2 stable，標準版（Standard） |
+| 語言 | GDScript |
+| 繪圖器 | Compatibility |
+| 作業系統 | Linux，或 Windows 的 WSL2 + WSLg |
+| 專案位置 | Linux 檔案系統內（例如 `~/godot-projects/`），不放在 `/mnt/c/` |
+| AI agent | Claude Code 或 Codex CLI，使用既有訂閱登入 |
+
+## 動手操作
+
+### 步驟 1：確認 WSL2 與 WSLg（Windows 使用者）
+
+原生 Linux 桌面使用者可以跳到步驟 2。Windows 使用者請先在 **PowerShell** 執行：
+
+```powershell
+wsl --version
+wsl --update
+```
+
+輸出中應該看得到 WSL 版本與 WSLg 版本。接著進入你的 Linux 發行版（例如 Ubuntu），先看幾個線索：
+
+```bash
+echo "DISPLAY=$DISPLAY WAYLAND_DISPLAY=$WAYLAND_DISPLAY"
+ls /mnt/wslg
+```
+
+`DISPLAY` 有值、`/mnt/wslg` 存在，代表 WSLg **可能**可用，但這只是線索，不是證明。**真正的證明是步驟 3 中 Godot 編輯器的視窗確實出現、而且能操作。**
+
+再安裝幾個本課程會用到的工具：
+
+```bash
+sudo apt update
+sudo apt install -y unzip curl git mesa-utils
+glxinfo -B | head -n 20
+```
+
+`glxinfo -B` 會顯示 OpenGL 由誰提供。若看到 `D3D12` 字樣，代表正透過 Windows GPU 加速；若是 `llvmpipe`，則是 CPU 軟體繪圖，能用但會比較慢。
+
+:::caution[專案請放在 Linux 檔案系統]
+請把專案放在 `~/` 底下（例如 `~/godot-projects/`），**不要**放在 `/mnt/c/...`。跨檔案系統存取很慢，而且檔案變更通知可能失效，造成 Godot 不會自動重新匯入。
+:::
+
+### 步驟 2：安裝 Godot 4.7.2 stable
+
+從 Godot 官方網站（godotengine.org）的下載頁，或 Godot 官方 GitHub 的 4.7.2-stable 發行頁，下載 Linux 的 **Standard（標準版）x86_64** 壓縮檔：
+
+```text
+Godot_v4.7.2-stable_linux.x86_64.zip
+```
+
+本課程全程使用 GDScript，**不要**下載檔名含 `mono` 的 .NET 版。假設檔案下載到 `~/Downloads`：
+
+```bash
+mkdir -p ~/opt/godot ~/.local/bin
+cd ~/opt/godot
+unzip ~/Downloads/Godot_v4.7.2-stable_linux.x86_64.zip
+chmod +x ~/opt/godot/Godot_v4.7.2-stable_linux.x86_64
+ln -sf ~/opt/godot/Godot_v4.7.2-stable_linux.x86_64 ~/.local/bin/godot
+godot --version
+```
+
+最後一行應該輸出以 `4.7.2.stable` 開頭的版本字串。若出現 `godot: command not found`，代表 `~/.local/bin` 不在 `PATH` 裡，請在 `~/.bashrc` 加入 `export PATH="$HOME/.local/bin:$PATH"` 後重開終端機。
+
+### 步驟 3：第一次開啟編輯器（證明圖形環境可用）
+
+```bash
+mkdir -p ~/godot-projects
+godot --editor
+```
+
+如果專案管理員視窗出現、可以用滑鼠點選，WSLg 或你的桌面環境就確認可用。按「建立」（Create），專案路徑選 `~/godot-projects/hello`。**繪圖器（Renderer）請選 Compatibility**。原因是 Godot 的 Web 匯出只支援 Compatibility 繪圖器，本課程兩款遊戲最後都要放到網頁上試玩，從一開始就用同一種繪圖器，可以避免最後才發現畫面不一致。
+
+如果視窗沒有出現、一開就閃退，或日誌出現 Vulkan 相關錯誤，可以強制使用 OpenGL：
+
+```bash
+godot --editor --rendering-driver opengl3
+```
+
+仍然失敗時，回到 PowerShell 執行 `wsl --update` 並重開 WSL（`wsl --shutdown` 後重新進入）再試。
+
+### 步驟 4：安裝 4.7.2 匯出範本
+
+匯出範本是 Godot 用來產生 Web 或桌面版本的「執行端」。在編輯器選單選「編輯器 → 管理匯出範本」（Editor → Manage Export Templates），按「下載並安裝」。版本必須與編輯器**完全相同**，否則匯出時會報錯。安裝後在終端機確認：
+
+```bash
+ls ~/.local/share/godot/export_templates/
+```
+
+應該看到 `4.7.2.stable` 資料夾。若網路受限，也可以從同一個官方下載來源取得 `Godot_v4.7.2-stable_export_templates.tpz`，再用同一視窗的「從檔案安裝」。
+
+### 步驟 5：認識常用 CLI 指令
+
+以下參數都已在 Godot 4.7.2 確認存在。在測試專案資料夾內練習：
+
+```bash
+cd ~/godot-projects/hello
+godot --path . --editor                       # 用編輯器開啟這個專案
+godot --headless --path . --import            # 只匯入資源後結束，常用於第一次取得專案時
+godot --path .                                # 直接執行主場景（需先設定主場景）
+godot --headless --path . --quit-after 300    # 不開視窗，執行約 300 個迭代後結束
+godot --headless --path . --quit-after 300 --log-file /tmp/hello.log   # 同上，並把日誌寫到指定檔案
+```
+
+不指定 `--log-file` 時，Godot 預設會把執行日誌寫到使用者資料夾：
+
+```bash
+ls ~/.local/share/godot/app_userdata/
+# 進入以專案名稱命名的資料夾，日誌在 logs/godot.log
+```
+
+這些日誌就是之後讓 agent「看結果」的主要依據之一。你可以隨時用 `godot --help` 查看完整參數列表。
+
+### 步驟 6：Claude Code 首次設定（訂閱登入）
+
+依照 Claude Code 官方概覽頁（`code.claude.com/docs/en/overview`）當下列出的安裝方式安裝。撰寫時，官方在 Linux／WSL 上提供原生安裝指令：
+
+```bash
+curl -fsSL https://claude.ai/install.sh | bash
+```
+
+若官方頁面的指令與此不同，請以官方頁面為準。安裝後在專案資料夾中啟動：
+
+```bash
+cd ~/godot-projects/hello
+claude
+```
+
+第一次啟動會要求登入。請選擇**以 Claude 帳號（Pro、Max 等訂閱）登入**，在瀏覽器完成授權。登入後輸入 `/status` 查看目前的帳號與驗證方式。
+
+:::danger[避免意外走 API 計費]
+本課程不使用、也不需要任何 API 金鑰。如果你的環境變數中曾經設定過 `ANTHROPIC_API_KEY`，Claude Code 可能優先使用它，費用就會變成按量計費。請執行 `env | grep -i anthropic` 檢查；若有輸出，從 `~/.bashrc` 等設定檔中移除後重開終端機，再用 `/status` 確認是訂閱帳號。
+:::
+
+### 步驟 7：Codex CLI 首次設定（ChatGPT 登入）
+
+Codex CLI 以 npm 套件發布，需要先有 Node.js 與 npm（Ubuntu 套件庫中的版本可能過舊，建議依 Node.js 官方說明安裝目前的 LTS 版本）。然後：
+
+```bash
+npm install -g @openai/codex
+cd ~/godot-projects/hello
+codex
+```
+
+第一次啟動時選擇 **Sign in with ChatGPT**，在瀏覽器以你既有的 ChatGPT 訂閱帳號完成登入。登入後可以輸入 `/status` 查看帳號與目前設定；同樣地，若環境變數中有 `OPENAI_API_KEY`，請確認它不會被使用，本課程不需要它。
+
+### 步驟 8：認識權限介面，但先不要放寬
+
+兩個工具都會在執行指令或修改檔案前詢問你，或依設定在沙箱中運作。介面與指令名稱會隨版本更新，因此本課程不背特定指令：
+
+- 在工具內輸入 `/help`，找出目前版本中與權限、核准或沙箱相關的設定介面，看看預設允許做哪些事。
+- 本課程全程使用**需要確認**或**只能寫入目前專案資料夾**的設定。不要使用略過所有權限確認的旗標，也不要在全域設定中開放所有操作。
+
+## 程式碼解說：一行指令代表什麼
+
+```bash
+godot --headless --path . --quit-after 300 --log-file /tmp/hello.log
+```
+
+- `--headless`：不建立視窗，使用虛擬的顯示與音訊驅動，適合在終端機或 agent 中執行。
+- `--path .`：指定專案根目錄（有 `project.godot` 的那層）。
+- `--quit-after 300`：跑大約 300 個主迴圈迭代就自動結束，避免遊戲無限執行讓 agent 卡住。
+- `--log-file /tmp/hello.log`：把日誌寫到固定位置，方便你或 agent 事後讀取。
+
+這個指令能抓到腳本解析錯誤、找不到資源、空值存取等**文字層級**的問題，但它**看不見**角色是否被畫在正確位置、顏色對不對。畫面問題仍需要你實際開視窗確認；第 6 章會介紹 `--write-movie` 這類錄製影格的方法。
+
+## 交給 agent 的提示詞
+
+把下面這段貼給 Claude Code 或 Codex，讓它幫你檢查環境，而不是修改系統：
+
+<AgentTask
+  title="環境健康檢查（唯讀）"
+  prompt={`請幫我檢查 Godot 開發環境，只執行唯讀指令，不要安裝、下載或修改任何東西。
+1. 執行 godot --version，確認是否為 4.7.2.stable。
+2. 列出 ~/.local/share/godot/export_templates/ 內容，確認是否有 4.7.2.stable 資料夾。
+3. 檢查 DISPLAY 與 WAYLAND_DISPLAY 是否有值。請說明這只是線索，真正確認圖形環境需要我親自開啟 Godot 編輯器視窗。
+4. 確認目前專案資料夾位於 Linux 檔案系統，而不是 /mnt/ 底下。
+5. 在目前專案資料夾執行 godot --headless --path . --quit-after 60 --log-file /tmp/env-check.log，然後貼出日誌最後 30 行。
+6. 檢查環境變數中是否存在 ANTHROPIC_API_KEY 或 OPENAI_API_KEY，只回報有或沒有，不要印出值。
+最後用條列整理：哪些正常、哪些需要我手動處理，以及建議的下一步。`}
+/>
+
+## 自我檢查
+
+- [ ] `godot --version` 顯示 `4.7.2.stable`，匯出範本資料夾也是 `4.7.2.stable`。
+- [ ] 我**親眼看到**並操作過 Godot 編輯器視窗，不只是看到環境變數有值。
+- [ ] 測試專案使用 Compatibility 繪圖器。
+- [ ] 專案位於 `~/` 底下而非 `/mnt/c/`。
+- [ ] `--log-file` 指定的日誌檔確實產生了。
+- [ ] Claude Code 或 Codex 的 `/status` 顯示的是訂閱帳號登入。
+- [ ] 環境變數中沒有不小心設定的 API 金鑰。
+
+## 練習
+
+1. 在測試專案中建立一個空的 2D 場景存檔，並在「專案設定 → 應用程式 → 執行」把它設為主場景，然後用 `godot --path .` 從終端機啟動，確認遊戲視窗出現。
+2. 執行 `godot --headless --path . --quit-after 60 --log-file /tmp/a.log`，再故意把某個腳本寫錯一行重跑並寫到 `/tmp/b.log`，比較兩份日誌的差異，最後把腳本改回來。
+3. 分別讓 Claude Code 與 Codex 執行上面的「環境健康檢查」提示詞，比較它們回報的格式，以及詢問你權限的方式。
+
+## 常見錯誤與限制
+
+- **環境變數有值但視窗出不來**：環境變數只是線索。先試 `--rendering-driver opengl3`，再執行 `wsl --update` 與 `wsl --shutdown` 後重試。
+- **匯出時說找不到範本**：編輯器與範本版本不一致，常見於換了編輯器版本卻沒重裝範本。兩者都必須是 4.7.2.stable。
+- **聲音沒有輸出**：WSLg 透過 PulseAudio 轉送音訊，若 Windows 端沒有預設輸出裝置會沒有聲音。這不影響本課程大部分內容，也可以改在瀏覽器中測試音效。
+- **下載了 .NET（mono）版**：.NET 版需要額外的 SDK，且 C# 專案無法匯出到 Web。請改用標準版。
+- **`npm install -g` 權限錯誤**：不要用 `sudo` 硬裝，改用 Node.js 版本管理工具或依 npm 官方說明設定使用者層級的全域目錄。
+- **agent 卡在執行遊戲**：沒有加 `--quit-after` 或 `--quit` 的執行指令不會自己結束，請在提示詞中要求一定要加上。
+- **被引導去申請 API 金鑰**：本課程只使用 Claude 或 ChatGPT 既有訂閱登入，任何要求你建立 API 金鑰或開啟用量計費的步驟都不屬於本課程。
+
+## 官方參考
+
+- Godot 4.7 官方文件首頁：https://docs.godotengine.org/en/4.7/
+- Godot 介紹（繁體中文，4.x）：https://docs.godotengine.org/zh-tw/4.x/about/introduction.html
+- Godot 官方網站與下載：https://godotengine.org
+- Claude Code 概覽與安裝：https://code.claude.com/docs/en/overview
+- Codex 官方文件：https://developers.openai.com/codex
+
+命令列參數、匯出範本與 Web 匯出的詳細說明，都可以從 4.7 文件首頁的搜尋欄找到。繁體中文翻譯可能落後英文版，遇到差異請以英文 4.7 版本為準。

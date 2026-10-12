@@ -1,0 +1,19 @@
+---
+import {readFileSync} from 'node:fs';
+import {resolve} from 'node:path';
+import {Code} from 'astro:components';
+interface Props {dimension:'2d'|'3d';stage:string;file?:'main'|'player'|'item';method?:string;}
+const {dimension,stage,file='main',method}=Astro.props;
+const relative=`examples/${dimension}/${stage}/scripts/${file}.gd`;
+let code=readFileSync(resolve(relative),'utf8');
+if(method){
+ const found=code.match(new RegExp(`^func ${method}\\([^]*?(?=^func |$(?![^]))`,'m'));
+ if(!found)throw new Error(`Missing documented method ${relative}: ${method}`);
+ code=found[0].trim();
+}
+---
+<aside class="source-excerpt">
+ <p><strong>下載專案的實際程式</strong> · <code>{relative}</code></p>
+ <Code code={code} lang="gdscript" theme="github-light" />
+ <p style="font-size:.85rem">下載版用 <code>_ready()</code> 建立場景物件；上方編輯器練習則讓你手動建立節點。執行時切換 Scene 面板的「Remote」可對照真正的場景樹。此段直接取自下載版原始檔。</p>
+</aside>

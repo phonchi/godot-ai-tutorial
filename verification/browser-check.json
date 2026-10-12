@@ -1,0 +1,178 @@
+{
+  "base": "http://127.0.0.1:4322/godot-ai-tutorial/",
+  "pages": [
+    {
+      "route": "",
+      "width": 1440,
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": []
+    },
+    {
+      "route": "",
+      "width": 768,
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": []
+    },
+    {
+      "route": "",
+      "width": 390,
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": []
+    },
+    {
+      "route": "lessons/04-signals/",
+      "width": 1440,
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": []
+    },
+    {
+      "route": "lessons/04-signals/",
+      "width": 768,
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": []
+    },
+    {
+      "route": "lessons/04-signals/",
+      "width": 390,
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": []
+    },
+    {
+      "route": "lessons/07-2d-movement/",
+      "width": 1440,
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": []
+    },
+    {
+      "route": "lessons/07-2d-movement/",
+      "width": 768,
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": []
+    },
+    {
+      "route": "lessons/07-2d-movement/",
+      "width": 390,
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": []
+    },
+    {
+      "route": "lessons/15-3d-controller/",
+      "width": 1440,
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": []
+    },
+    {
+      "route": "lessons/15-3d-controller/",
+      "width": 768,
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": []
+    },
+    {
+      "route": "lessons/15-3d-controller/",
+      "width": 390,
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": []
+    },
+    {
+      "route": "lessons/18-mcp/",
+      "width": 1440,
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": []
+    },
+    {
+      "route": "lessons/18-mcp/",
+      "width": 768,
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": []
+    },
+    {
+      "route": "lessons/18-mcp/",
+      "width": 390,
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": []
+    },
+    {
+      "route": "prompts/",
+      "width": 1440,
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": []
+    },
+    {
+      "route": "prompts/",
+      "width": 768,
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": []
+    },
+    {
+      "route": "prompts/",
+      "width": 390,
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": []
+    },
+    {
+      "route": "downloads/",
+      "width": 1440,
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": []
+    },
+    {
+      "route": "downloads/",
+      "width": 768,
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": []
+    },
+    {
+      "route": "downloads/",
+      "width": 390,
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": []
+    },
+    {
+      "route": "play/",
+      "width": 1440,
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": []
+    },
+    {
+      "route": "play/",
+      "width": 768,
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": []
+    },
+    {
+      "route": "play/",
+      "width": 390,
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": []
+    }
+  ],
+  "errors": [],
+  "copy": true,
+  "progress_persists": true,
+  "search_results": 5,
+  "mobile_navigation": true
+}

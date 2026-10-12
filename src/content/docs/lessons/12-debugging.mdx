@@ -1,0 +1,176 @@
+---
+title: "12｜除錯：讀懂錯誤、用好除錯器、和 agent 一起找問題"
+description: "學會閱讀 Godot 的錯誤訊息與日誌，使用中斷點、遠端場景樹、碰撞形狀顯示等除錯工具，並把錯誤整理成 agent 能有效處理的最小重現描述。"
+sidebar:
+  order: 12
+---
+
+import LessonDiagram from '../../../components/LessonDiagram.astro';
+import AgentTask from '../../../components/AgentTask.astro';
+
+## 學習目標
+
+1. 從錯誤訊息中讀出三件事：哪個檔案、哪一行、什麼東西是空的或錯的。
+2. 使用 `print`、`push_warning`、`push_error`、`assert` 在不同情況下輸出資訊。
+3. 使用除錯器的中斷點、逐行執行、變數檢視與「遠端」場景樹。
+4. 使用「顯示碰撞形狀」與監視器（Monitors）排除物理與效能問題。
+5. 把一個 bug 整理成「重現步驟、預期、實際、日誌」四段，交給 agent 分析。
+
+## 核心概念
+
+### 除錯的順序：先重現，再縮小，最後才修
+
+不論是你自己或 agent，最浪費時間的方式是「看到錯誤就猜一個修法」。比較有效的順序是：
+
+1. **重現**：找到能穩定觸發問題的操作步驟。
+2. **縮小**：確認是哪個場景、哪個腳本、哪一行開始不對。
+3. **假設與驗證**：提出一個原因，用 `print` 或中斷點證實，再修改。
+4. **回歸檢查**：修好後，確認原本正常的功能沒有被弄壞。
+
+<LessonDiagram kind="workflow" />
+
+### Godot 的錯誤從哪裡看
+
+| 位置 | 內容 |
+| --- | --- |
+| 編輯器下方「輸出」 | `print` 的內容與一般訊息 |
+| 「除錯器 → 錯誤」分頁 | 執行期的錯誤與警告，可以展開看呼叫堆疊 |
+| 腳本編輯器底部 | 存檔時的語法錯誤，紅字標示行號 |
+| 終端機 | 用 CLI 執行時的全部輸出 |
+| 日誌檔 | `~/.local/share/godot/app_userdata/專案名稱/logs/godot.log` |
+
+## 動手操作
+
+### 步驟 1：讀懂三種常見錯誤
+
+**空值存取**
+
+```text
+Invalid access to property or key 'text' on a base object of type 'Nil'.
+```
+
+意思是：你對一個 `null` 取 `text` 屬性。往前找這個變數從哪裡來，通常是 `$路徑` 寫錯、節點被改名、或在 `_ready` 之前就使用了 `@onready` 變數。（不同版本的訊息文字略有差異，例如舊版寫成 `Invalid get index 'text' (on base: 'Nil')`，意思相同。）
+
+**呼叫不存在的函式**
+
+```text
+Invalid call. Nonexistent function 'can_take_damage' in base 'Area2D'.
+```
+
+意思是：你以為拿到的是玩家，其實拿到的是一個 `Area2D`。檢查群組成員或碰撞回呼中的 `body` 是誰。
+
+**物理回呼中修改狀態**
+
+```text
+Can't change this state while flushing queries. Use call_deferred() or set_deferred() to change monitoring state instead.
+```
+
+訊息本身就給了解法：改用 `set_deferred` 或 `call_deferred`。
+
+### 步驟 2：適當的輸出
+
+```gdscript
+# 示範概念：不同等級的輸出
+func _on_star_collected() -> void:
+	print("收集前：", stars_collected)                  # 一般資訊
+	if stars_collected > STARS_TO_WIN:
+		push_warning("星星數超過目標：%d" % stars_collected)  # 黃色警告，會進入除錯器
+	assert(state == GameState.PLAYING, "非進行中卻收到星星")  # 只在除錯版中檢查
+```
+
+- `print`：臨時觀察用，修好後記得移除，避免輸出被淹沒。
+- `push_warning`、`push_error`：會出現在除錯器的錯誤分頁並附帶呼叫位置，適合「不該發生但不致命」的情況。
+- `assert`：條件不成立時中斷執行；在匯出的發行版中會被忽略，所以不能用來處理正常流程。
+
+### 步驟 3：中斷點與逐行執行
+
+1. 在腳本編輯器中，點擊行號左側設定紅點（或按 `F9`）。
+2. 按 F5 執行，觸發該行時遊戲會暫停，編輯器切到除錯器。
+3. 在「堆疊框架」（Stack Frames）看是誰呼叫了這個函式；在「成員」與「區域變數」看當下的數值。
+4. 用「逐步跳過」（Step Over，`F10`）一行行執行，用「逐步進入」（Step Into，`F11`）進入函式。
+5. 按「繼續」恢復執行。
+
+程式中也可以寫 `breakpoint` 關鍵字，效果和紅點相同。
+
+### 步驟 4：遠端場景樹
+
+遊戲執行時，場景面板上方會出現「遠端」（Remote）與「本機」（Local）切換。切到遠端可以看到**正在執行中**的場景樹：哪些星星還在、玩家的實際位置、某個節點的屬性目前是多少，甚至可以直接在檢查器修改來測試。
+
+### 步驟 5：除錯選單
+
+在編輯器上方的「除錯」選單勾選：
+
+- **顯示碰撞形狀**：看到所有碰撞框與區域，最適合排查「為什麼碰不到」或「為什麼隔空被撞」。
+- **顯示導航**：使用導航功能時才需要。
+
+另外在除錯器的「監視器」分頁可以看到 FPS、節點數量、物件數量等。若節點數量一直增加不下降，代表有東西被產生卻沒被刪除。
+
+### 步驟 6：用 CLI 收集日誌給 agent
+
+```bash
+godot --path . --headless --quit-after 600 2>&1 | tee /tmp/godot-run.log | tail -n 60
+```
+
+`tee` 會把完整輸出存到檔案，同時在畫面顯示最後 60 行。agent 可以讀 `/tmp/godot-run.log` 取得完整內容。但要記得：**很多 bug 只在特定操作後出現**，headless 執行不會有人按鍵，這類 bug 不會出現在日誌中。這時要由你操作重現，再把編輯器除錯器中的錯誤訊息複製給 agent。
+
+## 程式碼解說：一份好的 bug 描述
+
+```text
+重現步驟：
+1. 執行主場景
+2. 收集 9 顆星
+3. 在受傷 2 次的狀態下，同時碰到最後一顆星與障礙物
+
+預期：顯示獲勝
+實際：顯示失敗，HUD 顯示星星 10 / 10、受傷 3 / 3
+
+錯誤訊息：無
+相關檔案：main.gd（_on_star_collected、_on_hazard_hit_player）
+已嘗試：在兩個函式開頭 print state，兩者都印出 PLAYING
+```
+
+這份描述讓 agent 不必猜：它知道怎麼重現、哪裡不對、哪些可能性已經排除。對照第 10 章，你會發現這個 bug 的成因是同一影格內兩個事件都通過了狀態檢查，問題不在單一函式，而在「誰先發生」的設計決策。
+
+## 交給 agent 的提示詞
+
+<AgentTask
+  title="分析 bug，不先修改"
+  prompt={`請協助我分析一個 Godot 4.x GDScript 專案的 bug。先不要修改任何檔案。
+［在這裡貼上：重現步驟、預期結果、實際結果、錯誤訊息或日誌、相關檔案、已嘗試的方法］
+請依序：
+1. 閱讀相關檔案，提出最多三個可能原因，依可能性排序，並說明每個原因的證據。
+2. 對最可能的原因，告訴我可以加在哪一行的 print 或中斷點來證實，以及我應該看到什麼輸出。
+3. 等我回報驗證結果後，再提出最小修改方案。
+4. 修改方案中說明如何確認原本正常的功能（收集、受傷、重開）沒有被影響。`}
+/>
+
+## 自我檢查
+
+- [ ] 看到錯誤時，我能從除錯器中點到出錯的那一行。
+- [ ] 我會設定中斷點並查看當下的變數值。
+- [ ] 我會在執行中切到遠端場景樹檢查節點狀態。
+- [ ] 我知道 headless 日誌抓不到「需要操作才會發生」的 bug。
+- [ ] 我能把一個 bug 寫成四段式描述。
+
+## 練習
+
+1. 故意把 HUD 中某個 `Label` 改名，執行遊戲，從錯誤訊息找回是哪一行出錯，再修正。
+2. 在星星的碰撞回呼中直接寫 `monitoring = false`（不用 `set_deferred`），觀察錯誤訊息，再改回正確寫法。
+3. 用監視器觀察：連續重開遊戲 10 次，節點數量是否穩定？
+4. 為本頁「程式碼解說」中的 bug 決定一個規則（例如「同一影格先處理收集」），請 agent 依規則修正並提供驗證方式。
+
+## 常見錯誤與限制
+
+- **錯誤只在第一次出現**：Godot 對重複的錯誤可能只顯示一次或合併計數，看錯誤分頁的計數欄位。
+- **修改後沒有生效**：忘記存檔，或執行的是另一個場景（F5 與 F6 的差別）。
+- **`print` 太多看不到重點**：在 `_process` 中 `print` 每秒會輸出數十行，改成只在數值改變時輸出。
+- **讓 agent 猜**：沒有錯誤訊息和重現步驟時，agent 只能猜，可能改掉正確的程式。先蒐集證據。
+- **以為 headless 沒錯誤就沒 bug**：邏輯錯誤（例如勝負判斷順序）不會產生任何錯誤訊息。
+
+## 官方參考
+
+- 除錯工具總覽：https://docs.godotengine.org/en/4.7/tutorials/scripting/debug/overview_of_debugging_tools.html
+- 除錯器面板：https://docs.godotengine.org/en/4.7/tutorials/scripting/debug/debugger_panel.html
+- 命令列與日誌相關參數：https://docs.godotengine.org/en/4.7/tutorials/editor/command_line_tutorial.html
+- 資料路徑（user:// 與日誌所在位置）：https://docs.godotengine.org/en/4.7/tutorials/io/data_paths.html
+- @GDScript（assert、breakpoint 等）：https://docs.godotengine.org/en/4.7/classes/class_@gdscript.html

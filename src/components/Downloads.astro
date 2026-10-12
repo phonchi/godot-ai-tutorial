@@ -1,0 +1,6 @@
+---
+interface Props {dimension:'2d'|'3d'}
+const {dimension}=Astro.props;const base=import.meta.env.BASE_URL.replace(/\/?$/, '/');
+const stages=dimension==='2d'?[['01-movement','01 · 角色移動','輸入映射、方向與速度'],['02-collect','02 · 收集物件','Area2D 與計分'],['03-hazards','03 · 障礙與受傷','生成、碰撞與生命值'],['04-interface','04 · 介面與狀態','HUD、勝負與重開'],['05-final','05 · 完成品','音效與完整遊戲循環']]:[['01-world','01 · 3D 世界','地面、材質、光照'],['02-controller','02 · 角色控制','移動、跳躍與跟隨攝影機'],['03-final','03 · 完成品','收集、出口與重新開始']];
+---
+<div style="overflow-x:auto"><table class="download-table"><thead><tr><th>階段</th><th>學習重點</th><th>專案</th></tr></thead><tbody>{stages.map(([slug,title,desc])=><tr><td>{title}</td><td>{desc}</td><td><a href={`${base}downloads/${dimension}-${slug}.zip`} download>下載 ZIP ↓</a></td></tr>)}</tbody></table></div>

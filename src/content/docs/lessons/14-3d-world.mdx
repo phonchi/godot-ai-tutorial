@@ -1,0 +1,178 @@
+---
+title: "14｜3D 遊戲（一）：座標、光線與關卡場地"
+description: "進入 3D：認識 Godot 的 3D 座標與單位，用基本網格與碰撞體搭出地板、牆、平台，加入光源與環境，為第三人稱收集遊戲準備場地。"
+sidebar:
+  order: 14
+---
+
+import LessonDiagram from '../../../components/LessonDiagram.astro';
+import AgentTask from '../../../components/AgentTask.astro';
+import SourceExcerpt from '../../../components/SourceExcerpt.astro';
+
+## 學習目標
+
+3D 遊戲的完整規格是：**第三人稱、固定跟隨的攝影機；WASD 或方向鍵移動、空白鍵跳躍；收集 5 個物件後才能進入出口獲勝；按 R 重新開始**。本章先完成場地：
+
+1. 理解 Godot 3D 的座標軸方向與單位。
+2. 在 3D 視窗中移動視角、放置與調整物件。
+3. 用 `MeshInstance3D` 搭配 `StaticBody3D` 與 `CollisionShape3D` 建立有碰撞的地板、牆壁與平台。
+4. 加入 `DirectionalLight3D` 與 `WorldEnvironment`，讓場景有光影與天空。
+5. 預留 5 個收集點、出口位置與玩家出生點。
+
+本章對應 3D 範例的「01 world」階段，見 [下載頁](../../downloads/)。
+
+## 核心概念
+
+### 3D 座標
+
+Godot 3D 使用右手座標系：
+
+- **X**：向右為正。
+- **Y**：**向上**為正（注意：和 2D 的向下相反）。
+- **Z**：朝向你（螢幕外）為正，所以「往前」通常是 **-Z**。
+
+單位慣例是**1 單位 = 1 公尺**。物理引擎的重力、跳躍高度都用這個尺度，所以角色高度約 1.8、門寬約 2 會比較自然。
+
+<LessonDiagram kind="coordinates" />
+
+### 外觀和碰撞是分開的
+
+和 2D 一樣，3D 中「看得到」和「碰得到」是兩件事：
+
+- `MeshInstance3D` 負責外觀，`Mesh` 屬性可以選 `BoxMesh`、`PlaneMesh`、`SphereMesh`、`CapsuleMesh` 等基本形狀。
+- `StaticBody3D` 加上 `CollisionShape3D` 負責碰撞，形狀可選 `BoxShape3D` 等。
+
+兩者要手動對齊尺寸。另一種快速原型做法是 CSG 節點（例如 `CSGBox3D`），勾選 `Use Collision` 就同時有外觀與碰撞，適合快速搭關卡，但效能比一般網格差，大型場景不建議大量使用。
+
+### 光線與環境
+
+- `DirectionalLight3D`：模擬太陽，平行光，旋轉角度決定光線方向，可開啟陰影。
+- `WorldEnvironment`：設定天空、環境光、霧等。沒有它時，背景是灰色、暗面全黑。
+
+## 動手操作
+
+### 步驟 1：建立 3D 專案
+
+建立新專案 `orb-collector-3d`，繪圖器選 **Compatibility**。在輸入對應中建立：`move_left`、`move_right`、`move_up`、`move_down`（WASD 與方向鍵）、`jump`（空白鍵）、`restart`（R）。
+
+### 步驟 2：熟悉 3D 視窗操作
+
+新增場景，根節點選 `Node3D`，命名 `Main`。在 3D 視窗中：
+
+- 按住滑鼠**右鍵**拖曳旋轉視角，同時按 WASD 可以飛行移動（自由視角）。
+- 滑鼠**中鍵**拖曳平移，滾輪縮放。
+- 選取物件後按 `F` 讓視角聚焦到它。
+- 工具列的移動（W）、旋轉（E）、縮放（R）模式，配合畫面中的彩色箭頭操作：紅 X、綠 Y、藍 Z。
+
+### 步驟 3：地板
+
+1. 在 `Main` 底下加 `StaticBody3D`，命名 `Floor`。
+2. `Floor` 底下加 `MeshInstance3D`，`Mesh` 選新增 `BoxMesh`，大小 `(30, 1, 30)`。
+3. 再加 `CollisionShape3D`，`Shape` 選新增 `BoxShape3D`，大小同樣 `(30, 1, 30)`。
+4. 把 `Floor` 的位置設為 `(0, -0.5, 0)`，讓地板上表面剛好在 Y = 0。
+5. 在 `MeshInstance3D` 的 `Surface Material Override` 新增 `StandardMaterial3D`，`Albedo → Color` 選一個綠色或灰色。
+
+用有厚度的方塊而不是 `PlaneMesh` 當地板，可以減少快速移動時穿過地板的機率。
+
+### 步驟 4：牆壁與平台
+
+用同樣方式做出：
+
+- 四面牆：大小例如 `(30, 3, 1)` 與 `(1, 3, 30)`，放在地板邊緣。
+- 2 到 3 個平台：大小 `(4, 1, 4)`，高度分別約 1、2，讓玩家需要跳躍才能上去。
+
+做好一個牆或平台後，可以選取後按 `Ctrl+D` 複製，再調整位置與大小。注意：複製後若直接修改網格的大小，可能會同時改到原本的物件，因為它們共用同一個 `BoxMesh` 資源。要獨立修改時，在資源欄位按右鍵選「唯一化」（Make Unique）。
+
+### 步驟 5：光線與環境
+
+1. 在 3D 視窗上方工具列有「預覽太陽」與「預覽環境」按鈕，點選旁邊的選單可以「新增太陽到場景」與「新增環境到場景」，會自動建立 `DirectionalLight3D` 與 `WorldEnvironment`。
+2. 選取 `DirectionalLight3D`，旋轉約 `(-50, 30, 0)` 度，勾選 `Shadow → Enabled`。
+
+### 步驟 6：預留位置與攝影機
+
+1. 加入 5 個 `Marker3D`，命名 `OrbSpot1` 到 `OrbSpot5`，分散放在地面與平台上，至少一個需要跳躍才拿得到。
+2. 加入一個 `Marker3D` 命名 `ExitSpot`，放在場地角落。
+3. 加入一個 `Marker3D` 命名 `PlayerSpawn`，放在場地中央、高度約 1。
+4. 加入一個 `Camera3D`，位置約 `(0, 12, 16)`，旋轉 X 約 `-35` 度，讓整個場地可見。按 F6 執行，確認看得到整個場地。
+
+`Marker3D` 在遊戲中看不到，只是一個帶有位置的標記，下一章會把玩家和收集物放到這些位置。
+
+## 程式碼解說：用程式產生一排柱子
+
+場地多半在編輯器中手動擺放。若需要重複排列的物件，也可以用程式產生：
+
+```gdscript
+# 示範概念：用程式產生有碰撞的柱子
+extends Node3D
+
+@export var count := 5
+@export var spacing := 3.0
+
+func _ready() -> void:
+	for i in count:
+		var body := StaticBody3D.new()
+		var mesh_instance := MeshInstance3D.new()
+		var box := BoxMesh.new()
+		box.size = Vector3(0.6, 2.0, 0.6)
+		mesh_instance.mesh = box
+		var shape := CollisionShape3D.new()
+		var box_shape := BoxShape3D.new()
+		box_shape.size = box.size
+		shape.shape = box_shape
+		body.add_child(mesh_instance)
+		body.add_child(shape)
+		body.position = Vector3(i * spacing, 1.0, 0)
+		add_child(body)
+```
+
+- `Vector3(x, y, z)`：3D 的位置與大小都用三個分量。
+- 柱子高 2，所以中心放在 Y = 1，底部才會剛好在地面上。這和第 3 步地板位置的原理相同：**節點位置是形狀的中心**。
+- 程式產生的節點只存在於執行時，在編輯器中看不到。
+
+## 交給 agent 的提示詞
+
+<AgentTask
+  title="檢查 3D 場地的碰撞對齊"
+  prompt={`這是 Godot 4.x 的 3D 專案，主場景是 main.tscn，場地由 StaticBody3D、MeshInstance3D、CollisionShape3D 組成。請不要修改任何檔案。
+1. 讀取 main.tscn，列出每個 StaticBody3D 底下的網格大小與碰撞形狀大小，標出兩者不一致的地方。
+2. 列出所有 Marker3D 的名稱與位置，指出是否有標記位於牆內或地面以下（Y 小於 0）。
+3. 檢查是否有多個 MeshInstance3D 共用同一個網格資源（同一個 sub_resource id），提醒我修改時的影響。
+4. 執行 godot --path . --headless --quit-after 60 2>&1 | tail -n 30。
+5. 說明 headless 無法確認光影與視覺效果，列出我要在編輯器中檢查的項目。`}
+/>
+
+## 自我檢查
+
+- [ ] 我能說出 3D 中 Y 軸的方向和 2D 有什麼不同。
+- [ ] 地板上表面在 Y = 0，牆與平台的網格和碰撞尺寸一致。
+- [ ] 開啟「除錯 → 顯示碰撞形狀」執行時，碰撞框和外觀重合。
+- [ ] 場景有光影與天空，物體有陰影。
+- [ ] 5 個收集點、出口、出生點都已放置，且至少一個收集點需要跳躍。
+
+## 練習
+
+1. 用 CSG 節點（`CSGBox3D`、`CSGCylinder3D`）搭一座有斜坡的小橋，勾選 `Use Collision`，比較和手動組合的差異。
+2. 為不同用途的物件做三種材質（地板、牆、平台），存成 `.tres` 檔以便重複使用。
+3. 調整 `WorldEnvironment` 的環境光與霧，做出黃昏或夜晚的氣氛，並注意 Compatibility 繪圖器支援的效果有限。
+
+## 常見錯誤與限制
+
+- **物體一半埋在地下**：忘了節點位置是中心點。高度為 h 的物件，中心要放在 h / 2。
+- **只有外觀沒有碰撞**：`MeshInstance3D` 單獨存在時不會擋住任何東西，一定要有物理體加碰撞形狀。
+- **改一個方塊大小，其他方塊也變了**：共用資源，使用「唯一化」。
+- **場景全黑**：沒有光源，或光源方向朝上。
+- **Compatibility 的視覺限制**：SDFGI、體積霧等進階效果僅在 Forward+ 中可用。為了 Web 匯出，本課程接受較簡單的畫面，並用顏色與光線方向補足。
+
+## 對照可下載的階段專案
+
+上面的操作讓你練習手動建立節點；下載版用程式建立同樣職責的物件，節點在執行後才出現在 Remote 場景樹。請以遊戲行為對照，並用以下原始碼認識另一種組合方式。
+
+<SourceExcerpt dimension="3d" stage="01-world" file="main" method="make_box" />
+
+## 官方參考
+
+- 3D 介紹：https://docs.godotengine.org/en/4.7/tutorials/3d/introduction_to_3d.html
+- 官方入門「你的第一個 3D 遊戲」：https://docs.godotengine.org/en/4.7/getting_started/first_3d_game/index.html
+- 標準材質：https://docs.godotengine.org/en/4.7/tutorials/3d/standard_material_3d.html
+- CSG 原型工具：https://docs.godotengine.org/en/4.7/tutorials/3d/csg_tools.html
+- 繪圖器比較：https://docs.godotengine.org/en/4.7/tutorials/rendering/renderers.html

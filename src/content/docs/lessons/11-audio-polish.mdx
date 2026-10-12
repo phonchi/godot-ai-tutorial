@@ -1,0 +1,177 @@
+---
+title: "11｜2D 遊戲（五）：音效與手感潤飾"
+description: "為收集、受傷、勝負加上原創或 CC0 音效，設定音訊匯流排；再用 Tween、粒子與鏡頭震動加強回饋，並處理瀏覽器的音效自動播放限制。"
+sidebar:
+  order: 11
+---
+
+import LessonDiagram from '../../../components/LessonDiagram.astro';
+import AgentTask from '../../../components/AgentTask.astro';
+import SourceExcerpt from '../../../components/SourceExcerpt.astro';
+
+## 學習目標
+
+1. 知道如何取得**可合法使用**的音效：自己產生，或使用授權清楚的 CC0 素材。
+2. 用 `AudioStreamPlayer` 播放音效，並把音效與音樂分到不同的音訊匯流排（Audio Bus）。
+3. 處理「播放音效的節點同時被刪除」這個常見陷阱。
+4. 用 `Tween` 做出星星被收集時的縮放與淡出、受傷時的鏡頭震動。
+5. 了解 Web 平台的音效自動播放限制。
+
+完成後就是 2D 遊戲的最終版本，可與 2D 範例「05 final」階段對照，見 [下載頁](../../downloads/)，也可以到 [試玩頁](../../play/) 玩玩看。
+
+## 核心概念
+
+### 「遊戲手感」來自回饋
+
+同樣的規則，有沒有回饋的感受差很多。一個動作發生時，玩家可以從三個管道得到確認：**聲音**（叮一聲）、**動畫**（星星放大後消失）、**畫面**（受傷時畫面震一下）。每個回饋都很短，但加總起來就讓遊戲「有反應」。
+
+### 音效的授權
+
+本課程的範例只使用原創或明確可自由使用的素材。實務上的選擇：
+
+- **自己產生**：像 jsfxr 這類網頁版音效產生器，可以按幾個按鈕產生復古遊戲音效並下載 `.wav`。使用前請閱讀該工具頁面對產出音效的授權說明。
+- **CC0 素材庫**：例如 Kenney 的音效包標示為 CC0，可以商用且不需要標示出處；但每個素材庫、甚至每個檔案的授權可能不同，下載時請保存授權說明。
+- **避免**：從影片或其他遊戲擷取、來源不明的「免費音效」。
+
+### 音訊匯流排
+
+匯流排就像混音器的推桿。把音效送到 `SFX` 匯流排、音樂送到 `Music` 匯流排，之後就能分別調整音量，例如做一個「音效開關」只要靜音 `SFX`。
+
+<LessonDiagram kind="signal" />
+
+## 動手操作
+
+### 步驟 1：準備音效檔
+
+準備三個短音效：`pickup.wav`、`hurt.wav`、`win.wav`（失敗可以先共用 `hurt.wav` 或另做一個）。放在 `res://audio/` 資料夾。Godot 會自動匯入。短音效用 `.wav`，較長的背景音樂用 `.ogg`，檔案較小。
+
+### 步驟 2：設定匯流排
+
+1. 開啟編輯器下方的「音訊」（Audio）面板。
+2. 按「新增匯流排」兩次，命名為 `SFX` 與 `Music`，它們預設送往 `Master`。
+3. 存檔後會產生 `default_bus_layout.tres`，記得提交到 Git。
+
+### 步驟 3：在主場景播放音效
+
+在主場景加入三個 `AudioStreamPlayer` 節點：`PickupSound`、`HurtSound`、`EndSound`。分別把音效檔拖進它們的 `Stream` 屬性，`Bus` 選 `SFX`。
+
+為什麼放在主場景而不是星星裡？因為星星被收集時會呼叫 `queue_free()`，如果音效節點是星星的子節點，它會跟著被刪除，聲音只播了一瞬間就斷掉。
+
+```gdscript
+# 示範概念：在主場景播放音效（節錄）
+@onready var pickup_sound: AudioStreamPlayer = $PickupSound
+@onready var hurt_sound: AudioStreamPlayer = $HurtSound
+
+func _on_star_collected() -> void:
+	if state != GameState.PLAYING:
+		return
+	pickup_sound.pitch_scale = randf_range(0.95, 1.1)
+	pickup_sound.play()
+	# 其餘計數邏輯同第 10 章
+```
+
+`pitch_scale` 每次稍微變化，連續收集時聽起來比較不單調。
+
+### 步驟 4：星星消失動畫
+
+把星星的 `queue_free()` 改成先播動畫再刪除：
+
+```gdscript
+# 示範概念：被收集時縮放淡出（星星腳本）
+func _on_body_entered(body: Node2D) -> void:
+	if not body.is_in_group("player"):
+		return
+	collected.emit()
+	set_deferred("monitoring", false)  # 動畫期間不再觸發
+	var tween := create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(self, "scale", Vector2(1.8, 1.8), 0.2)
+	tween.tween_property(self, "modulate:a", 0.0, 0.2)
+	tween.chain().tween_callback(queue_free)
+```
+
+### 步驟 5：受傷時鏡頭震動
+
+在玩家底下加 `Camera2D`（或放在主場景），附加腳本：
+
+```gdscript
+# 示範概念：簡單的鏡頭震動
+extends Camera2D
+
+var _shake_strength := 0.0
+
+func shake(strength: float = 8.0) -> void:
+	_shake_strength = strength
+
+func _process(delta: float) -> void:
+	if _shake_strength <= 0.0:
+		offset = Vector2.ZERO
+		return
+	offset = Vector2(randf_range(-1, 1), randf_range(-1, 1)) * _shake_strength
+	_shake_strength = move_toward(_shake_strength, 0.0, 30.0 * delta)
+```
+
+受傷時呼叫 `shake()`。如果主場景會暫停，記得鏡頭在暫停時的行為是否符合你的期望。
+
+### 步驟 6（選做）：粒子
+
+在星星被收集的位置產生一團小點：加入 `CPUParticles2D`，`One Shot` 勾選、`Emitting` 先關閉、`Amount` 約 `12`、`Explosiveness` 設 `1`。在 Web 匯出時，`CPUParticles2D` 的相容性最穩定。同樣地，粒子節點如果是星星的子節點，會隨星星一起被刪除，所以要在動畫結束前播完，或者把它產生在主場景。
+
+## 程式碼解說
+
+- `create_tween()`：建立一個綁定在這個節點上的補間動畫，節點被刪除時會自動停止。
+- `set_parallel(true)`：接下來的 `tween_property` 同時進行（放大與淡出一起發生）。
+- `tween.chain()`：回到依序執行，等前面的動畫結束後才呼叫 `queue_free`。
+- `"modulate:a"`：屬性路徑可以指到子欄位，這裡只改透明度。
+- `set_deferred("monitoring", false)`：在物理回呼中不能直接修改 `monitoring`，要延後到安全的時機。
+- `move_toward(a, b, step)`：讓數值以固定速度逼近目標，用來讓震動逐漸減弱。
+
+## 交給 agent 的提示詞
+
+<AgentTask
+  title="加入受傷回饋（有範圍）"
+  prompt={`這是 Godot 4.x GDScript 2D 收集遊戲，已有遊戲狀態機與 HUD。主場景有 HurtSound（AudioStreamPlayer），玩家受傷時主場景會增加 hits。
+任務：玩家受傷時，播放 HurtSound、讓鏡頭震動、讓 HUD 的受傷文字短暫變紅再恢復。
+要求：
+1. 先閱讀相關腳本並說明計畫，列出會修改的檔案，等我同意。
+2. 不要修改 .tscn；若需要新增節點（例如 Camera2D），列出我要在編輯器中進行的步驟。
+3. 不要新增或下載任何音效檔。
+4. 修改後執行 godot --path . --headless --quit-after 300 2>&1 | tail -n 40。
+5. 提醒我 headless 模式不會輸出聲音也看不到震動，列出我要在視窗中確認的三件事。`}
+/>
+
+## 自我檢查
+
+- [ ] 收集星星時聲音完整播完，沒有被截斷。
+- [ ] 星星消失有放大淡出動畫，動畫期間不會被重複收集。
+- [ ] 受傷時有聲音與鏡頭震動，震動會逐漸停止。
+- [ ] 在音訊面板把 `SFX` 靜音後，所有音效都消失。
+- [ ] 每個音效檔我都知道來源與授權。
+
+## 練習
+
+1. 加入背景音樂（`.ogg`，在匯入設定中勾選 `Loop`），送到 `Music` 匯流排，並在 HUD 加一個切換音樂開關的按鈕（使用 `AudioServer.set_bus_mute`）。
+2. 讓玩家移動時角色外觀有輕微的上下彈跳（用 `sin` 和時間計算 `Polygon2D` 的位移）。
+3. 把收集時的音高隨連續收集次數逐漸升高，一段時間沒收集就重設。
+
+## 常見錯誤與限制
+
+- **聲音被截斷**：播放音效的節點被 `queue_free()` 了。把播放器放在不會被刪除的節點上。
+- **同一音效快速重複播放時互相打斷**：一個 `AudioStreamPlayer` 同時只播一個聲音（除非調整 `Max Polyphony`）。
+- **Web 版一開始沒有聲音**：瀏覽器的自動播放政策要求使用者先與頁面互動（點擊或按鍵）才能播放聲音。可以在遊戲開始前加一個「按任意鍵開始」畫面，同時也是第 10 章練習 2 的好用途。
+- **WSLg 中沒有聲音**：可能是 Windows 端的音訊轉送問題，不影響匯出結果，可以改到瀏覽器中測試。
+- **素材授權不明**：發布前把所有素材的來源與授權列在專案的說明檔中，這是好習慣。
+
+## 對照可下載的階段專案
+
+上面的操作讓你練習手動建立節點；下載版用程式建立同樣職責的物件，節點在執行後才出現在 Remote 場景樹。請以遊戲行為對照，並用以下原始碼認識另一種組合方式。
+
+<SourceExcerpt dimension="2d" stage="05-final" file="main" method="collect_item" />
+
+## 官方參考
+
+- 音訊匯流排：https://docs.godotengine.org/en/4.7/tutorials/audio/audio_buses.html
+- AudioStreamPlayer：https://docs.godotengine.org/en/4.7/classes/class_audiostreamplayer.html
+- Tween：https://docs.godotengine.org/en/4.7/classes/class_tween.html
+- 2D 粒子系統：https://docs.godotengine.org/en/4.7/tutorials/2d/particle_systems_2d.html
+- Web 匯出（音訊相關注意事項）：https://docs.godotengine.org/en/4.7/tutorials/export/exporting_for_web.html

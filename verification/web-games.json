@@ -1,0 +1,22 @@
+[
+  {
+    "game": "2d",
+    "status": 200,
+    "changed_pixels_after_input": 9104,
+    "player_x": {
+      "before": 479.5,
+      "after": 622.5,
+      "restart": 479.5
+    },
+    "page_errors": [],
+    "console_errors": []
+  },
+  {
+    "game": "3d",
+    "status": 200,
+    "changed_pixels_after_input": 92321,
+    "player_x": null,
+    "page_errors": [],
+    "console_errors": []
+  }
+]

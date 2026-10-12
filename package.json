@@ -1,0 +1,27 @@
+{
+  "name": "godot-ai-tutorial",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev --host 127.0.0.1",
+    "build": "astro build",
+    "preview": "astro preview --host 127.0.0.1",
+    "check": "NODE_OPTIONS=--max-old-space-size=1536 astro check"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "dependencies": {
+    "@astrojs/check": "^0.9.10",
+    "@astrojs/mdx": "^8.0.3",
+    "@astrojs/starlight": "^0.42.6",
+    "@fontsource-variable/noto-sans-tc": "^5.3.1",
+    "@fontsource-variable/noto-serif-tc": "^5.3.1",
+    "astro": "^7.3.8",
+    "typescript": "^6.0.3"
+  },
+  "overrides": {
+    "postcss-selector-parser": "^7.1.6"
+  }
+}

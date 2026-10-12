@@ -1,0 +1,173 @@
+---
+title: "04｜訊號與生命週期：_ready、_process、_physics_process"
+description: "理解 Godot 的訊號（signal）如何讓節點彼此溝通而不互相綁死，以及節點生命週期函式各自在什麼時候被呼叫、該放什麼程式。"
+sidebar:
+  order: 4
+---
+
+import LessonDiagram from '../../../components/LessonDiagram.astro';
+import AgentTask from '../../../components/AgentTask.astro';
+
+## 學習目標
+
+1. 說明訊號是什麼，以及為什麼「子節點發出訊號、上層節點接收」是 Godot 推薦的溝通方式。
+2. 會用編輯器的「節點 → 訊號」面板連接內建訊號，也會用程式碼 `connect()` 連接。
+3. 會宣告自訂訊號、帶參數發出（`emit`），並在另一個腳本接收。
+4. 分清楚 `_ready`、`_process`、`_physics_process`、`_unhandled_input` 的呼叫時機與用途。
+5. 認得幾個與訊號、物理有關的典型錯誤訊息。
+
+## 核心概念
+
+### 訊號：發生了某件事，誰想知道誰就來聽
+
+在一般程式中，若「星星被撿到時要加分」，你可能會讓星星直接呼叫分數物件的函式。這樣星星就必須知道分數物件在哪裡，兩者被綁在一起。Godot 的做法是：
+
+- 星星只負責**宣告**「我有一個叫做 collected 的事件」，並在被碰到時**發出**它。
+- 主場景（或分數管理者）**連接**這個訊號，決定收到後要做什麼。
+
+星星不需要知道誰在聽，因此同一顆星星可以被放進任何場景重複使用。這就是觀察者模式，Godot 把它內建成語言功能。
+
+<LessonDiagram kind="signal" />
+
+許多節點本身就有內建訊號，例如：
+
+| 節點 | 訊號 | 何時發出 |
+| --- | --- | --- |
+| `Area2D` / `Area3D` | `body_entered(body)` | 有物理實體進入區域 |
+| `Button` | `pressed()` | 按鈕被按下 |
+| `Timer` | `timeout()` | 倒數結束 |
+| `AnimationPlayer` | `animation_finished(anim_name)` | 動畫播完 |
+
+### 生命週期：節點從出生到每一格畫面
+
+| 函式 | 呼叫時機 | 適合放什麼 |
+| --- | --- | --- |
+| `_ready()` | 節點與它所有子節點都進入場景樹後，呼叫一次 | 取得子節點參考、連接訊號、初始化數值 |
+| `_process(delta)` | 每個繪製影格一次，間隔不固定 | 動畫、UI 更新、非物理的視覺效果 |
+| `_physics_process(delta)` | 固定頻率（預設每秒 60 次） | 移動角色、`move_and_slide()`、物理判斷 |
+| `_unhandled_input(event)` | 有輸入事件且沒被 UI 吃掉時 | 單次按鍵動作，例如按 R 重開 |
+
+`delta` 是距離上次呼叫經過的秒數。把速度乘以 `delta`，移動量就不會因為電腦快慢而不同。注意 `_ready()` 的順序是**由下往上**：子節點的 `_ready()` 會先執行，父節點最後，所以父節點在 `_ready()` 裡可以放心使用子節點。
+
+## 動手操作
+
+以下用一個小練習場景示範，請在第 1 章建立的測試專案中操作（這是概念示範，不是課程範例專案的實際結構）。
+
+### 步驟 1：用編輯器連接內建訊號
+
+1. 新增場景，根節點選 `Node2D`，命名為 `SignalDemo`，存成 `signal_demo.tscn`。
+2. 加入子節點 `Timer`，在檢查器中把 `Wait Time` 設為 `1`、勾選 `Autostart`。
+3. 對 `SignalDemo` 附加新腳本 `signal_demo.gd`。
+4. 選取 `Timer`，切換到右側的「節點」（Node）分頁，下方會列出訊號。雙擊 `timeout()`，在對話框中選擇 `SignalDemo` 作為接收者，按「連接」。
+5. 編輯器會在腳本中產生 `_on_timer_timeout()` 函式，並在函式名稱旁顯示綠色連接圖示。
+
+在函式裡寫一行 `print("tick")`，按 F6 執行目前場景，輸出面板每秒會出現一次 tick。
+
+### 步驟 2：改用程式碼連接
+
+在編輯器裡連接很直覺，但連接資訊藏在 `.tscn` 檔中，讀程式時看不到。很多團隊（以及 agent）偏好在 `_ready()` 中用程式碼連接，讓關係一目了然。先在節點面板中把剛才的連接斷開，然後把腳本改成：
+
+```gdscript
+# 示範概念：用程式碼連接 Timer 的內建訊號
+extends Node2D
+
+@onready var timer: Timer = $Timer
+var ticks := 0
+
+func _ready() -> void:
+	timer.timeout.connect(_on_timer_timeout)
+
+func _on_timer_timeout() -> void:
+	ticks += 1
+	print("tick ", ticks)
+	if ticks >= 3:
+		timer.stop()
+		print("計時結束")
+```
+
+### 步驟 3：自訂訊號與參數
+
+再新增一個場景：根節點 `Area2D`，命名 `Pickup`，底下加 `CollisionShape2D`（形狀選 `CircleShape2D`）和一個 `Polygon2D` 當外觀。附加腳本：
+
+```gdscript
+# 示範概念：會發出自訂訊號的拾取物
+extends Area2D
+
+signal picked(value: int)
+
+@export var value := 1
+
+func _ready() -> void:
+	body_entered.connect(_on_body_entered)
+
+func _on_body_entered(body: Node2D) -> void:
+	if body.is_in_group("player"):
+		picked.emit(value)
+		queue_free()
+```
+
+接收端（例如主場景）在 `_ready()` 中連接：
+
+```gdscript
+# 示範概念：主場景接收拾取訊號
+func _ready() -> void:
+	for pickup in get_tree().get_nodes_in_group("pickups"):
+		pickup.picked.connect(_on_pickup_picked)
+
+func _on_pickup_picked(value: int) -> void:
+	score += value
+	print("目前分數：", score)
+```
+
+這裡假設每個拾取物都被加入 `pickups` 群組（在節點面板的「群組」分頁設定），玩家角色被加入 `player` 群組。群組讓你不必寫死節點路徑。
+
+## 程式碼解說
+
+- `signal picked(value: int)`：宣告一個名為 `picked`、帶一個整數參數的訊號。參數型別是給編輯器與閱讀者看的說明。
+- `picked.emit(value)`：Godot 4 的寫法，把訊號當成物件呼叫 `emit`。舊教學中常見的 `emit_signal("picked", value)` 仍可用，但字串寫錯時不會在編輯階段報錯。
+- `body_entered.connect(_on_body_entered)`：把函式本身（Callable）傳進去，不需要寫字串名稱。
+- `queue_free()`：在本影格結束時安全地刪除節點。不要在訊號回呼中直接用 `free()`，因為其他程式可能還在使用它。
+- `_on_..._...` 命名：這是 Godot 編輯器自動產生的慣例，不是強制規定，但保持一致能讓人和 agent 都容易找到。
+
+## 交給 agent 的提示詞
+
+<AgentTask
+  title="解釋並檢查訊號連接"
+  prompt={`請先閱讀目前專案中的所有 .gd 與 .tscn 檔，不要修改任何檔案。
+1. 列出每一個訊號連接：發送節點、訊號名稱、接收節點、接收函式，以及它是在 .tscn 中連接還是在程式碼中用 connect 連接。
+2. 指出是否有同一個訊號被連接兩次（例如 .tscn 已連接、程式碼又 connect 一次）。
+3. 指出是否有移動或物理邏輯寫在 _process 而不是 _physics_process。
+4. 執行 godot --path . --headless --quit-after 120，貼出輸出中的錯誤與警告。
+用表格整理結果，最後只「建議」修改方式，等我確認後再動手。`}
+/>
+
+## 自我檢查
+
+- [ ] 我能說出 `_ready()` 為什麼適合放 `connect()`。
+- [ ] 我知道角色移動要放在 `_physics_process()`，而 UI 文字更新可以放在訊號回呼中。
+- [ ] 我會用節點面板查看某個節點目前有哪些訊號已連接。
+- [ ] 我能解釋「子節點發訊號、父節點接收」比「子節點直接呼叫父節點」好在哪裡。
+
+## 練習
+
+1. 讓 `Timer` 計時三次後發出你自訂的 `finished_counting` 訊號，再由另一個節點接收並印出訊息。
+2. 讓 `Pickup` 的訊號多帶一個參數：拾取物的位置（`global_position`），接收端把位置印出來。
+3. 把一段寫在 `_process` 中、每格檢查「分數是否改變」再更新文字的程式，改寫成「分數改變時發訊號、只在訊號時更新文字」。
+
+## 常見錯誤與限制
+
+- **訊號沒有反應**：`Area2D` 的 `Monitoring` 被關掉，或碰撞層（Layer）與遮罩（Mask）沒有對上。區域要「看得到」角色所在的層，`body_entered` 才會觸發。
+- **回呼被呼叫兩次**：同一個連接在 `.tscn` 裡做過一次、程式碼又做一次。選一種方式就好。
+- **改了函式名稱後訊號失效**：在編輯器連接的訊號是用名稱記錄的，改名後要重新連接，否則執行時會出現找不到方法的錯誤。
+- **`Can't change this state while flushing queries`**：在 `body_entered` 回呼中直接停用碰撞形狀或改變物理狀態時會出現。請改用 `set_deferred("disabled", true)` 或 `call_deferred()`，讓修改延到物理計算之後。
+- **`@onready` 變數是 null**：節點路徑寫錯，或節點在場景中被改名。錯誤通常會顯示 `Node not found`。
+- **以為 `_process` 的頻率固定**：它跟著畫面更新率變動，高更新率螢幕上一秒會呼叫更多次。需要穩定節奏的邏輯請用 `_physics_process` 或 `Timer`。
+
+## 官方參考
+
+- 使用訊號：https://docs.godotengine.org/en/4.7/getting_started/step_by_step/signals.html
+- 閒置與物理處理：https://docs.godotengine.org/en/4.7/tutorials/scripting/idle_and_physics_processing.html
+- Node 類別（生命週期函式）：https://docs.godotengine.org/en/4.7/classes/class_node.html
+- Area2D 類別：https://docs.godotengine.org/en/4.7/classes/class_area2d.html
+
+繁體中文版文件可在網址中把 `en/stable` 換成 `zh-tw/4.x`，但翻譯可能落後英文版，遇到差異請以英文版為準。

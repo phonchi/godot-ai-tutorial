@@ -1,0 +1,169 @@
+---
+title: "13｜Web 匯出：從編輯器與 CLI 產生可在瀏覽器遊玩的版本"
+description: "完整說明 Godot 4 的 Web 匯出：匯出預設、執行緒支援與伺服器標頭、用 CLI 重複匯出、本機測試，以及 Web 平台的限制與檢查清單。"
+sidebar:
+  order: 13
+---
+
+import LessonDiagram from '../../../components/LessonDiagram.astro';
+import AgentTask from '../../../components/AgentTask.astro';
+
+## 學習目標
+
+1. 了解 Web 匯出產生了哪些檔案，以及瀏覽器如何載入它們。
+2. 正確設定 Web 匯出預設，理解「執行緒支援」與伺服器標頭（COOP/COEP）的關係。
+3. 用 CLI 一行指令重複匯出，讓 agent 也能執行。
+4. 在本機以 HTTP 伺服器測試，並用瀏覽器開發者工具查看錯誤。
+5. 列出 Web 平台的主要限制，並完成發布前檢查清單。
+
+本章只處理**產生與測試**匯出檔。網站的部署由課程網站維護者負責，你也可以把結果放到任何靜態網站服務上。本課程兩款遊戲的成品可在 [試玩頁](../../play/) 遊玩。
+
+## 核心概念
+
+### Web 匯出包含什麼
+
+匯出後的資料夾中會有：
+
+| 檔案 | 用途 |
+| --- | --- |
+| `index.html` | 載入頁面，可替換成自訂外殼 |
+| `index.js` | 啟動與載入程式 |
+| `index.wasm` | Godot 引擎本身（編譯成 WebAssembly） |
+| `index.pck` | 你的專案資源與腳本 |
+| 其他圖示、`audio.worklet.js` 等 | 依版本與設定而定 |
+
+瀏覽器先載入頁面與 JavaScript，再下載 `.wasm` 與 `.pck`，最後啟動引擎。引擎本體 `.wasm` 數十 MB 是正常的，伺服器若有啟用壓縮會小很多。
+
+<LessonDiagram kind="workflow" />
+
+### 繪圖器
+
+Godot 4 的 Web 版使用 WebGL 2，只支援 **Compatibility** 繪圖器。如果專案使用 Forward+ 或 Mobile，請先切換成 Compatibility 並重新執行；原本使用的部分效果可能無法保留。這就是本課程從第 1 章起就使用 Compatibility 的原因。
+
+### 執行緒支援與伺服器標頭
+
+Godot 的 Web 版可以使用多執行緒，但瀏覽器要求頁面處於「跨來源隔離」（cross-origin isolated）狀態才允許，這需要伺服器送出兩個 HTTP 標頭：
+
+```text
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+```
+
+許多免費的靜態網站服務無法自訂標頭。Godot 4.3 起，Web 匯出預設中提供可以**關閉執行緒支援**的選項，關閉後就不需要這些標頭。本課程的小遊戲不需要多執行緒，因此建議**關閉**。代價是音訊在主執行緒處理，負載很重時可能出現雜音，對本課程規模影響不大。
+
+## 動手操作
+
+### 步驟 1：確認前置條件
+
+- 編輯器與匯出範本版本一致（第 1 章）。
+- 專案設定 → 繪圖 → 繪圖器 為 `gl_compatibility`。
+- `.gitignore` 忽略 `build/`。
+
+### 步驟 2：建立或檢查 Web 匯出預設
+
+1. 「專案 → 匯出」，若第 9 章已建立 Web 預設則直接選取，否則按「新增 → Web」。
+2. 預設名稱保留 `Web`（CLI 匯出時會用到這個名稱，大小寫要一致）。
+3. `Export Path`：`build/web/index.html`。
+4. 「變體」（Variant）區域的 `Thread Support`：關閉。
+5. `VRAM Texture Compression`：預設勾選桌面用格式即可；若要支援手機瀏覽器，再勾選行動裝置格式（檔案會變大）。
+6. `HTML → Canvas Resize Policy`：保留 `Adaptive`，讓遊戲畫面隨瀏覽器視窗縮放。
+
+匯出設定會存在 `export_presets.cfg`，請提交到 Git（裡面若有密碼等敏感資訊會另存在 `.godot/export_credentials.cfg`，不會被提交）。
+
+### 步驟 3：用 CLI 匯出
+
+```bash
+cd ~/godot-projects/star-collector
+mkdir -p build/web
+godot --headless --path . --export-release "Web" build/web/index.html
+```
+
+- `--export-release`：匯出發行版；測試時可改用 `--export-debug`，錯誤訊息較完整。
+- `"Web"`：匯出預設的名稱，必須和 `export_presets.cfg` 中的完全相同。
+- 最後的路徑：輸出位置，資料夾需事先存在。
+
+匯出指令會自動結束，不需要 `--quit`。若輸出出現 `No export template found`，回到第 1 章確認範本版本。
+
+### 步驟 4：本機測試
+
+```bash
+python3 -m http.server 8000 --directory build/web
+```
+
+用瀏覽器開啟 `http://localhost:8000`。按 `F12` 開啟開發者工具：
+
+- **主控台**（Console）：Godot 的 `print` 與錯誤會出現在這裡。
+- **網路**（Network）：檢查 `.wasm` 與 `.pck` 是否成功載入（狀態 200）。
+
+Python 內建伺服器不會送出 COOP/COEP 標頭，這正好可以驗證「關閉執行緒支援」的版本能否在一般靜態伺服器上執行。
+
+另一個選擇是在編輯器右上角按「遠端除錯／在瀏覽器中執行」圖示，Godot 會自動啟動一個本機伺服器並開啟瀏覽器，適合快速測試。
+
+### 步驟 5：發布前檢查清單
+
+- [ ] 在至少兩種瀏覽器中測試（例如 Chrome 與 Firefox）。
+- [ ] 第一次互動前沒有聲音是預期行為；互動後音效正常。
+- [ ] 中文字正常顯示，沒有方塊（第 10 章的字型設定）。
+- [ ] 視窗縮放時畫面比例正確。可在專案設定 → 顯示 → 視窗 → 延展 設定 `Mode` 為 `canvas_items`、`Aspect` 為 `keep`。
+- [ ] 按鍵在點擊遊戲畫面取得焦點後正常；方向鍵不會捲動網頁。
+- [ ] R 重開在 Web 版中正常。
+- [ ] 載入時間可接受。
+
+## 程式碼解說：在程式中判斷是否為 Web
+
+```gdscript
+# 示範概念：依平台調整行為
+func _ready() -> void:
+	if OS.has_feature("web"):
+		# 例如：Web 版不顯示「離開遊戲」按鈕
+		$QuitButton.hide()
+
+func _on_quit_button_pressed() -> void:
+	get_tree().quit()
+```
+
+- `OS.has_feature("web")`：在 Web 匯出版本中為真。其他常用的特徵標籤有 `"editor"`、`"debug"`、`"linux"` 等。
+- 在瀏覽器中 `get_tree().quit()` 沒有意義（無法關閉分頁），所以 Web 版通常會隱藏離開按鈕。
+
+## 交給 agent 的提示詞
+
+<AgentTask
+  title="匯出並檢查 Web 版本"
+  prompt={`這是 Godot 4.x GDScript 專案，已在編輯器建立名為 Web 的匯出預設，匯出範本已安裝。
+1. 讀取 export_presets.cfg 與 project.godot，確認預設名稱、匯出路徑、執行緒支援是否關閉、繪圖器是否為 gl_compatibility。若有不符，只回報，不要修改。
+2. 確認 build/web 資料夾存在（不存在可以建立），然後執行 godot --headless --path . --export-release "Web" build/web/index.html，貼出輸出最後 40 行。
+3. 列出 build/web 中的檔案與大小。
+4. 不要啟動長時間執行的伺服器；改為告訴我啟動本機伺服器的指令，以及我在瀏覽器中要檢查的項目。
+5. 不要部署、不要上傳任何檔案。`}
+/>
+
+## 自我檢查
+
+- [ ] 我能用一行 CLI 指令產生 Web 版本。
+- [ ] 我能說明為什麼關閉執行緒支援後不需要特殊伺服器標頭。
+- [ ] 本機伺服器測試時，瀏覽器主控台沒有紅色錯誤。
+- [ ] 檢查清單全部通過。
+
+## 練習
+
+1. 分別用 `--export-debug` 與 `--export-release` 匯出，比較檔案大小與瀏覽器主控台輸出的差異。
+2. 寫一個 shell 腳本 `export_web.sh`，依序執行匯出、列出檔案大小，並在匯出失敗時回傳非零狀態碼。
+3. 在專案設定中調整視窗延展模式，比較在寬螢幕與窄視窗中的顯示效果。
+
+## 常見錯誤與限制
+
+- **畫面卡在載入進度條**：開啟主控台查看。常見原因：`.wasm` 或 `.pck` 404、使用 `file://` 開啟、範本與編輯器版本不符。
+- **主控台出現 SharedArrayBuffer 相關錯誤**：匯出時啟用了執行緒支援，但伺服器沒有送出 COOP/COEP 標頭。關閉執行緒支援後重新匯出。
+- **預設名稱不符**：CLI 回報找不到預設時，檢查引號中的名稱與 `export_presets.cfg` 中 `name=` 的值。
+- **C# 專案無法匯出到 Web**：這是 Godot 4 目前的限制，本課程使用 GDScript 不受影響。
+- **手機瀏覽器**：本課程遊戲依賴鍵盤，手機上沒有實體鍵盤時無法操作；若要支援需另外加觸控按鈕，超出本課程範圍。
+- **效能**：Web 版通常比桌面版慢，3D 場景尤其明顯，第 17 章會討論。
+
+## 官方參考
+
+- 匯出至 Web：https://docs.godotengine.org/en/4.7/tutorials/export/exporting_for_web.html
+- 匯出專案與 CLI 匯出：https://docs.godotengine.org/en/4.7/tutorials/export/exporting_projects.html
+- 特徵標籤：https://docs.godotengine.org/en/4.7/tutorials/export/feature_tags.html
+- 多解析度與視窗延展：https://docs.godotengine.org/en/4.7/tutorials/rendering/multiple_resolutions.html
+
+Web 匯出是 Godot 4.x 各小版本間變動較多的部分（例如執行緒選項、匯出檔案清單）。若你的編輯器介面與本章描述不同，請以你所用版本的官方文件為準。

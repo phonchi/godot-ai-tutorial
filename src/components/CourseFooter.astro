@@ -1,0 +1,20 @@
+---
+import Footer from '@astrojs/starlight/components/Footer.astro';
+const isLesson=Astro.url.pathname.includes('/lessons/');
+---
+{isLesson && <section class="progress-box" aria-label="學習進度">
+ <div><p>完成練習後，替自己記下這一站。</p><span class="progress-count" aria-live="polite">進度只儲存在這個瀏覽器。</span></div>
+ <button class="progress-button" type="button" aria-pressed="false">標記本章完成</button>
+</section>}
+<Footer {...Astro.props} />
+<script>
+ const button=document.querySelector<HTMLButtonElement>('.progress-button');
+ const counter=document.querySelector('.progress-count');
+ const key='godot-ai-course-progress-v1';
+ if(button){
+ let done:string[]=[];try{done=JSON.parse(localStorage.getItem(key)||'[]');if(!Array.isArray(done))done=[]}catch{}
+ const path=location.pathname;
+ function render(){const completed=done.includes(path);button!.setAttribute('aria-pressed',String(completed));button!.textContent=completed?'本章已完成 · 點擊取消':'標記本章完成';if(counter)counter.textContent=`已完成 ${done.length} / 18 章 · 僅存於這個瀏覽器`;}
+ render();button.addEventListener('click',()=>{done=done.includes(path)?done.filter(x=>x!==path):[...done,path];try{localStorage.setItem(key,JSON.stringify(done));render()}catch{if(counter)counter.textContent='瀏覽器未允許儲存進度。'}});
+ }
+</script>

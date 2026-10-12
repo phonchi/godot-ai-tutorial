@@ -1,0 +1,234 @@
+---
+title: "16｜3D 遊戲（三）：收集 5 個物件、開啟出口與獲勝"
+description: "用 Area3D 製作會旋轉漂浮的收集物，主場景計數；收滿 5 個前出口保持鎖定，收滿後出口變色開啟，玩家進入即獲勝。重用 2D 篇的狀態機與 HUD 思路。"
+sidebar:
+  order: 16
+---
+
+import LessonDiagram from '../../../components/LessonDiagram.astro';
+import AgentTask from '../../../components/AgentTask.astro';
+import SourceExcerpt from '../../../components/SourceExcerpt.astro';
+
+## 學習目標
+
+1. 用 `Area3D` 製作收集物場景，加上旋轉與上下漂浮的動畫。
+2. 讓收集物發出訊號，主場景計數並更新 HUD。
+3. 建立一個有「鎖定／開啟」兩種狀態的出口：未收滿時進入會提示，收滿後才能獲勝。
+4. 把第 10 章的狀態機套用到 3D 遊戲：進行中、獲勝兩種主要狀態，按 R 重開。
+5. 體會 2D 與 3D 在遊戲邏輯層面幾乎相同，差別主要在節點型別與座標。
+
+完成後即為 3D 遊戲的最終版本，可與 3D 範例「03 final」階段對照，見 [下載頁](../../downloads/)，或到 [試玩頁](../../play/) 遊玩。
+
+## 核心概念
+
+### 2D 到 3D 的對應
+
+| 2D | 3D | 用途 |
+| --- | --- | --- |
+| `Area2D` | `Area3D` | 偵測進入，不阻擋 |
+| `CharacterBody2D` | `CharacterBody3D` | 玩家角色 |
+| `StaticBody2D` | `StaticBody3D` | 牆、地板 |
+| `Vector2` | `Vector3` | 位置、方向 |
+| `CanvasLayer` | `CanvasLayer` | HUD（3D 遊戲的 UI 仍是 2D） |
+
+訊號、群組、狀態機、`queue_free()`、`reload_current_scene()` 的用法完全相同。如果你完成了 2D 篇，這一章大多是在「換節點」。
+
+### 出口的兩種狀態
+
+出口本身也是一個小狀態機：
+
+<LessonDiagram kind="state" />
+
+- **鎖定**：紅色。玩家進入時，HUD 顯示「還需要收集 N 個」。
+- **開啟**：綠色。玩家進入時，主場景切換到獲勝狀態。
+
+出口只需要知道「我現在開了沒」，至於「收集幾個才開」由主場景決定，這和星星不管計分是同樣的原則。
+
+## 動手操作
+
+### 步驟 1：收集物場景
+
+1. 新增場景，根節點 `Area3D`，命名 `Orb`，加入 `orbs` 群組。
+2. 加入 `CollisionShape3D`，形狀 `SphereShape3D`，半徑 `0.5`。
+3. 加入 `MeshInstance3D`，命名 `Mesh`，`Mesh` 選 `SphereMesh`（半徑 `0.35`、高度 `0.7`）或 `TorusMesh`，材質用亮黃色，可勾選 `Emission` 讓它發光感更明顯。
+4. 附加腳本，存成 `orb.tscn`：
+
+```gdscript
+# 示範概念：旋轉漂浮的 3D 收集物
+extends Area3D
+
+signal collected
+
+@export var spin_speed := 2.0
+@export var bob_height := 0.2
+
+var _base_y := 0.0
+var _time := 0.0
+
+@onready var mesh: MeshInstance3D = $Mesh
+
+func _ready() -> void:
+	_base_y = mesh.position.y
+	body_entered.connect(_on_body_entered)
+
+func _process(delta: float) -> void:
+	_time += delta
+	mesh.rotation.y += spin_speed * delta
+	mesh.position.y = _base_y + sin(_time * 3.0) * bob_height
+
+func _on_body_entered(body: Node3D) -> void:
+	if body.is_in_group("player"):
+		collected.emit()
+		queue_free()
+```
+
+只轉動與移動 `Mesh` 子節點，碰撞區域保持不動，偵測範圍才穩定。
+
+### 步驟 2：把收集物放到標記位置
+
+在主場景中把 5 個 `orb.tscn` 實例分別放到第 14 章的 `OrbSpot1` 到 `OrbSpot5`。可以手動對齊位置，也可以在主場景的 `_ready()` 中用程式把收集物移到標記上（見練習 1）。
+
+### 步驟 3：出口場景
+
+1. 新增場景，根節點 `Area3D`，命名 `Exit`。
+2. 加入 `CollisionShape3D`（`BoxShape3D`，大小 `(2, 3, 1)`，位置 `(0, 1.5, 0)`）。
+3. 加入 `MeshInstance3D`，命名 `Door`，`BoxMesh` 同尺寸同位置，材質設為紅色，並在材質資源上按右鍵「唯一化」，或勾選材質的 `Resource → Local To Scene`，避免改色時影響其他物件。
+4. 附加腳本，存成 `exit.tscn`：
+
+```gdscript
+# 示範概念：有鎖定與開啟兩種狀態的出口
+extends Area3D
+
+signal player_entered(is_open: bool)
+
+const LOCKED_COLOR := Color(0.85, 0.2, 0.2)
+const OPEN_COLOR := Color(0.2, 0.85, 0.35)
+
+var is_open := false
+
+@onready var door: MeshInstance3D = $Door
+
+func _ready() -> void:
+	body_entered.connect(_on_body_entered)
+	_update_color()
+
+func open() -> void:
+	is_open = true
+	_update_color()
+
+func _update_color() -> void:
+	var material := door.get_active_material(0) as StandardMaterial3D
+	if material:
+		material.albedo_color = OPEN_COLOR if is_open else LOCKED_COLOR
+
+func _on_body_entered(body: Node3D) -> void:
+	if body.is_in_group("player"):
+		player_entered.emit(is_open)
+```
+
+把 `exit.tscn` 拖進主場景，放到 `ExitSpot` 位置。
+
+### 步驟 4：主場景邏輯
+
+```gdscript
+# 示範概念：3D 主場景的計數、出口與狀態
+extends Node3D
+
+enum GameState { PLAYING, WON }
+
+const ORBS_TO_OPEN := 5
+
+var state := GameState.PLAYING
+var orbs_collected := 0
+
+@onready var exit_area = $Exit   # 刻意不標型別，以呼叫出口自訂的 open()
+@onready var hud = $HUD
+
+func _ready() -> void:
+	for orb in get_tree().get_nodes_in_group("orbs"):
+		orb.collected.connect(_on_orb_collected)
+	exit_area.player_entered.connect(_on_exit_player_entered)
+	hud.update_orbs(orbs_collected, ORBS_TO_OPEN)
+
+func _on_orb_collected() -> void:
+	if state != GameState.PLAYING:
+		return
+	orbs_collected += 1
+	hud.update_orbs(orbs_collected, ORBS_TO_OPEN)
+	if orbs_collected >= ORBS_TO_OPEN:
+		exit_area.open()
+		hud.show_message("出口已開啟！")
+
+func _on_exit_player_entered(is_open: bool) -> void:
+	if state != GameState.PLAYING:
+		return
+	if is_open:
+		state = GameState.WON
+		hud.show_result("你贏了！按 R 重新開始")
+		get_tree().paused = true
+	else:
+		hud.show_message("還需要收集 %d 個" % (ORBS_TO_OPEN - orbs_collected))
+```
+
+HUD 的寫法與第 10 章相同：一個 `CanvasLayer`，提供 `update_orbs`、`show_message`、`show_result` 三個函式。`show_message` 可以用一個 `Timer` 讓訊息 2 秒後自動隱藏。第 15 章的掉落重設與 R 重開保留在同一個腳本中；暫停相關的 `Process Mode` 設定同第 10 章。
+
+## 程式碼解說
+
+- `signal player_entered(is_open: bool)`：出口回報「玩家進來了」，並附上自己目前是否開啟。主場景據此決定是獲勝還是提示。
+- `get_active_material(0) as StandardMaterial3D`：取得網格目前使用的第一個材質。若材質設在 `Surface Material Override` 也能取得。`as` 轉型失敗時會得到 `null`，所以要檢查。
+- **共用材質的陷阱**：材質是資源，預設在所有使用它的地方共用。如果兩個出口共用同一個材質，打開一個另一個也會變綠。用「唯一化」或 `Local To Scene` 避免。
+- `"還需要收集 %d 個" % (ORBS_TO_OPEN - orbs_collected)`：格式化時用括號包住運算式。
+- 主場景在 `_ready` 中連接出口訊號，出口本身完全不知道「5」這個數字，日後要改成 3 個或 8 個只需要改主場景的常數。
+
+## 交給 agent 的提示詞
+
+<AgentTask
+  title="比對 2D 與 3D 的遊戲邏輯"
+  prompt={`我有兩個 Godot 4.x GDScript 專案：2D 收集遊戲與 3D 收集遊戲（路徑：［填入兩個專案的路徑］）。請只讀取，不要修改。
+1. 比較兩者主場景腳本的狀態管理、計數、訊號連接方式，列出相同與不同之處。
+2. 指出 3D 專案中有沒有 2D 專案已經處理、但 3D 尚未處理的情境（例如勝利後的輸入、暫停時的 Process Mode、重開時暫停狀態的解除）。
+3. 檢查 3D 專案的出口材質是否會被多個節點共用。
+4. 執行 3D 專案的 godot --path ［3D 專案路徑］ --headless --quit-after 120 2>&1 | tail -n 30。
+5. 列出建議修改，依重要性排序，等我決定。`}
+/>
+
+## 自我檢查
+
+- [ ] 收集物在原地旋轉並上下漂浮，碰到就消失。
+- [ ] HUD 顯示「收集 x / 5」。
+- [ ] 未收滿時進入出口會出現提示，不會獲勝。
+- [ ] 收滿 5 個時出口由紅轉綠並顯示訊息。
+- [ ] 進入開啟的出口後顯示獲勝並暫停；按 R 重新開始，所有收集物回來、出口變回紅色。
+- [ ] 至少一個收集物必須跳到平台上才拿得到。
+
+## 練習
+
+1. 在主場景 `_ready()` 中，用迴圈把每個收集物的 `global_position` 設為對應 `OrbSpot` 標記的位置，讓關卡設計只需要移動標記。
+2. 出口開啟時，用 `Tween` 讓門往下沉入地面，而不是只改顏色（記得碰撞區域仍要保留以偵測玩家）。
+3. 加入一個計時器，HUD 顯示經過時間，獲勝時顯示總時間，並思考計時在暫停時是否該停止。
+4. 加入第 11 章的音效：收集、出口開啟、獲勝各一個，放在主場景中播放。
+
+## 常見錯誤與限制
+
+- **收集物碰不到**：檢查 `Area3D` 的碰撞形狀大小與位置、碰撞層與遮罩，並確認玩家有在 `player` 群組。
+- **出口顏色沒變**：材質在 `Mesh` 資源內而不是 `Surface Material Override`，或材質不是 `StandardMaterial3D`。用 `print(door.get_active_material(0))` 確認。
+- **重開後出口仍是綠色**：材質被改成共用資源且存回檔案，或是在編輯器執行時修改了資源。確認改色的材質是場景內的唯一資源。
+- **玩家站在出口裡收滿最後一個也不會獲勝**：因為沒有「重新進入」。可以在 `open()` 時用 `get_overlapping_bodies()` 檢查玩家是否已在範圍內，這是設計選擇。
+- **3D 中 HUD 字太小**：`CanvasLayer` 的 UI 不受 3D 攝影機影響，大小與 2D 篇的設定方式相同，可以用 `Theme` 統一調整。
+
+下一章把 3D 遊戲匯出到 Web：[17｜3D 匯出與效能](../17-3d-export/)。
+
+## 對照可下載的階段專案
+
+上面的操作讓你練習手動建立節點；下載版用程式建立同樣職責的物件，節點在執行後才出現在 Remote 場景樹。請以遊戲行為對照，並用以下原始碼認識另一種組合方式。
+
+<SourceExcerpt dimension="3d" stage="03-final" file="main" method="collect_item" />
+
+<SourceExcerpt dimension="3d" stage="03-final" file="main" method="try_exit" />
+
+## 官方參考
+
+- Area3D：https://docs.godotengine.org/en/4.7/classes/class_area3d.html
+- 資源與共用（Resources）：https://docs.godotengine.org/en/4.7/tutorials/scripting/resources.html
+- StandardMaterial3D：https://docs.godotengine.org/en/4.7/tutorials/3d/standard_material_3d.html
+- 官方入門「你的第一個 3D 遊戲」：https://docs.godotengine.org/en/4.7/getting_started/first_3d_game/index.html

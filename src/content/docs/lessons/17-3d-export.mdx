@@ -1,0 +1,177 @@
+---
+title: "17｜3D 匯出與效能：讓 3D 遊戲在瀏覽器中順暢執行"
+description: "把 3D 收集遊戲匯出到 Web，了解 Compatibility 繪圖器與 WebGL 2 的限制，用監視器與瀏覽器工具找出效能瓶頸，並完成兩款遊戲的最終檢查。"
+sidebar:
+  order: 17
+---
+
+import LessonDiagram from '../../../components/LessonDiagram.astro';
+import AgentTask from '../../../components/AgentTask.astro';
+import SourceExcerpt from '../../../components/SourceExcerpt.astro';
+
+## 學習目標
+
+1. 沿用第 13 章流程，把 3D 遊戲匯出為 Web 版本並在本機測試。
+2. 列出 3D 在 Web（WebGL 2、Compatibility 繪圖器）上的主要限制。
+3. 用 Godot 監視器與瀏覽器工具觀察影格率、繪製呼叫數等指標。
+4. 套用幾個對本課程規模最有效的優化：陰影、光源數量、材質共用、視窗解析度。
+5. 為 2D 與 3D 兩款遊戲完成最終的發布前檢查。
+
+## 核心概念
+
+### 3D 在 Web 上為什麼比較吃力
+
+2D 遊戲即使沒有優化，在瀏覽器裡通常也很順暢。3D 則不同：
+
+- 瀏覽器透過 WebGL 2 使用 GPU，額外的轉譯層會帶來負擔。
+- 引擎在 WebAssembly 中執行，CPU 端通常比原生版本慢。
+- 玩家的裝置差異很大，從高階桌機到內建顯示晶片的筆電都有。
+
+所以「在編輯器中很順」不代表「在瀏覽器中很順」，一定要實際匯出測試。
+
+<LessonDiagram kind="workflow" />
+
+### Compatibility 繪圖器的取捨
+
+本課程從第 1 章開始使用 Compatibility，讓編輯器與網頁使用相同的繪圖器；仍需實測光照、材質與縮放，不能保證每個裝置顯示完全一致。Compatibility 不支援的功能包括（以撰寫時的 4.x 為準，各版本持續改進中）：SDFGI、VoxelGI、體積霧、部分螢幕空間效果等。在第 14 章我們刻意只用方向光、基本材質與天空，就是為了避開這些差異。
+
+### 影響效能的主要因素
+
+| 因素 | 說明 | 本課程的建議 |
+| --- | --- | --- |
+| 繪製呼叫（Draw Calls） | 每個網格、每個材質都可能是一次呼叫 | 相同外觀的物件共用材質 |
+| 即時陰影 | 陰影需要從光源角度額外繪製一次場景 | 只有一個方向光開陰影，調整陰影距離 |
+| 光源數量 | Compatibility 對每個物件可受影響的光源數有上限 | 主要用一個方向光加環境光 |
+| 解析度 | 像素越多，GPU 工作越多 | 必要時降低 3D 繪製比例 |
+| 腳本負擔 | 大量節點在 `_process` 中運算 | 本課程規模通常不是瓶頸 |
+
+## 動手操作
+
+### 步驟 1：匯出 3D 遊戲
+
+在 3D 專案中依第 13 章建立 `Web` 匯出預設（關閉執行緒支援、路徑 `build/web/index.html`），然後：
+
+```bash
+cd ~/godot-projects/orb-collector-3d
+mkdir -p build/web
+godot --headless --path . --export-release "Web" build/web/index.html
+python3 -m http.server 8001 --directory build/web
+```
+
+用瀏覽器開啟 `http://localhost:8001`，完整玩一局：收集 5 個、進入出口、按 R 重開。
+
+### 步驟 2：觀察效能
+
+**在 Godot 編輯器中**：執行遊戲，切到除錯器的「監視器」分頁，勾選：
+
+- `Time → FPS`
+- `Rendering → Total Draw Calls in Frame`（名稱依版本可能略有不同）
+- `Rendering → Total Objects in Frame`
+
+**在瀏覽器中**：開發者工具的「效能」（Performance）分頁可以錄製幾秒並檢視每個影格的時間。也可以在遊戲中暫時加一個顯示 FPS 的 `Label`：
+
+```gdscript
+# 示範概念：在畫面上顯示 FPS（測試完記得移除或隱藏）
+extends Label
+
+func _process(_delta: float) -> void:
+	text = "FPS: %d" % Engine.get_frames_per_second()
+```
+
+把這個 `Label` 放在 HUD 中，匯出後在瀏覽器裡就能直接看到影格率。
+
+### 步驟 3：逐項優化並比較
+
+每次只改一項，重新匯出、記錄 FPS，才知道哪個改動有效：
+
+1. **陰影**：在 `DirectionalLight3D` 中把 `Directional Shadow → Max Distance` 從預設值調小到約 `40`（足以涵蓋場地），或在最低畫質選項中關閉陰影。
+2. **材質共用**：確認所有牆壁使用同一個材質資源（存成 `.tres`），而不是每面牆各一個。
+3. **3D 繪製比例**：專案設定 → 繪圖 → 縮放 3D → `Scale` 設為 `0.75`，3D 畫面以較低解析度繪製後放大，UI 仍保持清晰。Compatibility 繪圖器對 3D 縮放的支援是在 4.x 後續版本才加入，若設定後畫面沒有變化，請確認你的版本與官方文件。
+4. **視窗延展**：確認 `Stretch Mode` 與 `Aspect` 設定合理，避免在大螢幕上以過高解析度繪製。
+
+把結果記錄成表格，例如：
+
+```text
+改動                   | 桌機 Chrome FPS | 筆電 Firefox FPS
+原始                   | 60              | 38
+陰影距離 40            | 60              | 47
+3D 縮放 0.75           | 60              | 58
+```
+
+（上表為記錄格式示意，數字請填你自己的實測結果。）
+
+### 步驟 4：兩款遊戲的最終檢查
+
+| 項目 | 2D 要求 | 3D 要求 |
+| --- | --- | --- |
+| 移動 | WASD 與方向鍵 | WASD 與方向鍵 |
+| 收集目標 | 10 顆星即獲勝 | 5 個物件後出口開啟 |
+| 失敗或額外條件 | 受傷累計 3 次失敗 | 收滿才能進出口獲勝 |
+| 跳躍 | 不適用 | 空白鍵 |
+| R 重新開始 | 勝、負、進行中皆可 | 勝利、進行中皆可 |
+| Web 版 | 可遊玩、主控台無錯誤 | 可遊玩、主控台無錯誤 |
+| 文字與音效 | 中文正常、互動後有聲音 | 中文正常、互動後有聲音 |
+| 素材 | 原創或授權清楚 | 原創或授權清楚 |
+
+請把這張表複製到你的筆記中，依實際測試結果逐格打勾，任何一項不通過都回到對應章節修正。
+
+## 程式碼解說：提供畫質選項
+
+```gdscript
+# 示範概念：依畫質選項調整陰影與 3D 縮放
+func apply_quality(low: bool) -> void:
+	var sun := $DirectionalLight3D as DirectionalLight3D
+	sun.shadow_enabled = not low
+	get_viewport().scaling_3d_scale = 0.6 if low else 1.0
+```
+
+- `shadow_enabled`：直接開關即時陰影，是 3D 中最有感的效能選項之一。
+- `get_viewport().scaling_3d_scale`：執行時調整 3D 繪製比例，等同專案設定中的縮放選項。
+- 把這個函式接到 HUD 上的一個按鈕，或在 Web 版啟動時預設為低畫質，讓較弱的裝置也能遊玩。
+
+## 交給 agent 的提示詞
+
+<AgentTask
+  title="3D Web 效能檢查（不改檔）"
+  prompt={`這是 Godot 4.x GDScript 3D 專案，準備匯出到 Web。請先不要修改任何檔案。
+1. 讀取 project.godot，回報繪圖器、3D 縮放、視窗延展設定。
+2. 讀取主場景 .tscn，列出所有光源與其陰影設定，以及有多少個不同的材質資源、哪些物件可以共用材質。
+3. 執行 godot --headless --path . --export-release "Web" build/web/index.html，回報結果與 build/web 中各檔案大小。
+4. 依你的發現，提出最多三項最可能提升 Web 效能的修改，說明預期影響與如何測量。
+5. 提醒我：headless 匯出成功不代表瀏覽器中的效能或畫面正確，列出我在瀏覽器中要做的測試。`}
+/>
+
+## 自我檢查
+
+- [ ] 3D 遊戲在瀏覽器中可以完整玩一局。
+- [ ] 我記錄了至少兩項優化前後的 FPS。
+- [ ] 所有牆壁與地板共用少數幾個材質資源。
+- [ ] 兩款遊戲的最終檢查表全部通過。
+
+## 練習
+
+1. 在 HUD 加入「畫質：高／低」切換按鈕，呼叫 `apply_quality()`，在瀏覽器中比較差異。
+2. 用 `OS.has_feature("web")` 讓 Web 版預設使用低畫質，桌面版預設高畫質。
+3. 另外建立一個 Linux 桌面匯出預設，比較同一台電腦上桌面版與 Web 版的 FPS。
+
+## 常見錯誤與限制
+
+- **瀏覽器中畫面全黑但有聲音**：可能是瀏覽器停用了硬體加速或 WebGL 2。到瀏覽器設定開啟硬體加速，或換瀏覽器測試。
+- **陰影有鋸齒或閃爍**：調整陰影的 `Bias` 與 `Max Distance`；陰影距離越短，品質越好。
+- **在 WSLg 中測得的 FPS 偏低**：WSLg 的 GPU 轉送有額外負擔，編輯器中的 FPS 不代表玩家在瀏覽器中的體驗。以 Windows 瀏覽器開啟本機伺服器測試較準確。
+- **FPS 一直是 60**：通常是垂直同步限制在螢幕更新率，代表效能足夠，不是問題。
+- **只在一台電腦上測試**：至少用一台效能較弱的裝置測試，才知道優化是否足夠。
+
+## 對照可下載的階段專案
+
+上面的操作讓你練習手動建立節點；下載版用程式建立同樣職責的物件，節點在執行後才出現在 Remote 場景樹。請以遊戲行為對照，並用以下原始碼認識另一種組合方式。
+
+<SourceExcerpt dimension="3d" stage="03-final" file="main" method="update_camera" />
+
+## 官方參考
+
+- 匯出至 Web：https://docs.godotengine.org/en/4.7/tutorials/export/exporting_for_web.html
+- 繪圖器比較：https://docs.godotengine.org/en/4.7/tutorials/rendering/renderers.html
+- 效能優化總覽：https://docs.godotengine.org/en/4.7/tutorials/performance/index.html
+- 3D 解析度縮放：https://docs.godotengine.org/en/4.7/tutorials/3d/resolution_scaling.html
+- 光源與陰影：https://docs.godotengine.org/en/4.7/tutorials/3d/lights_and_shadows.html

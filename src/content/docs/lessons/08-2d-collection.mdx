@@ -1,0 +1,194 @@
+---
+title: "08｜2D 遊戲（二）：收集 10 顆星星"
+description: "用 Area2D 製作可重複使用的星星場景，透過自訂訊號回報被收集，由主場景計數，收滿 10 顆時判定獲勝。"
+sidebar:
+  order: 8
+---
+
+import LessonDiagram from '../../../components/LessonDiagram.astro';
+import AgentTask from '../../../components/AgentTask.astro';
+import SourceExcerpt from '../../../components/SourceExcerpt.astro';
+
+## 學習目標
+
+1. 建立一個以 `Area2D` 為根節點的星星場景，外觀用 `Polygon2D` 畫出原創星形。
+2. 讓星星在玩家碰到時發出自訂訊號並消失。
+3. 在主場景中放置 10 顆星星，並由主場景統一連接訊號、計數。
+4. 收集到 10 顆時印出獲勝訊息並停止玩家移動（UI 留到第 10 章）。
+5. 理解碰撞層（Layer）與遮罩（Mask）如何決定誰偵測得到誰。
+
+本章對應 2D 範例的「02 collect」階段，可在 [下載頁](../../downloads/) 取得完整專案對照。
+
+## 核心概念
+
+### Area2D：偵測而不阻擋
+
+`Area2D` 不會擋住任何東西，它只負責回報「有物體進來了」或「離開了」。星星、陷阱、終點、觸發區都適合用它。它的常用訊號是 `body_entered(body)`，當 `PhysicsBody2D`（例如玩家的 `CharacterBody2D`）進入時發出。
+
+### 誰負責計數？
+
+星星有十顆，如果每顆星星自己去改分數，就要知道分數放在哪裡。我們沿用第 4 章的原則：
+
+- **星星**只發出 `collected` 訊號，然後刪除自己。
+- **主場景**在開始時找到所有星星並連接訊號，收到時加一。
+
+<LessonDiagram kind="signal" />
+
+### 碰撞層與遮罩
+
+每個物理物件有兩組勾選框：
+
+- **Layer（層）**：「我在哪些層上」。
+- **Mask（遮罩）**：「我要偵測哪些層」。
+
+星星要偵測玩家，所以星星的 Mask 必須勾選玩家所在的 Layer。預設大家都在第 1 層、也都偵測第 1 層，所以一開始不設定也能動。當專案變大時，建議為層命名（專案設定 → 圖層名稱 → 2D 物理），例如第 1 層 player、第 2 層 walls、第 3 層 pickups、第 4 層 hazards。
+
+## 動手操作
+
+### 步驟 1：建立星星場景
+
+1. 新增場景，根節點選 `Area2D`，命名 `Star`。
+2. 加入 `CollisionShape2D`，形狀選 `CircleShape2D`，半徑 `14`。
+3. 加入 `Polygon2D`，`Color` 設為黃色。在檢查器的 `Polygon` 中輸入一個五角星的 10 個頂點（外圈與內圈交錯），或先用一個菱形代替：`(0, -16)`、`(12, 0)`、`(0, 16)`、`(-12, 0)`。
+4. 在節點面板的「群組」把 `Star` 加入 `stars` 群組。
+5. 存成 `star.tscn`。
+
+### 步驟 2：星星腳本
+
+```gdscript
+# 示範概念：被玩家碰到時發出訊號的星星
+extends Area2D
+
+signal collected
+
+func _ready() -> void:
+	body_entered.connect(_on_body_entered)
+
+func _on_body_entered(body: Node2D) -> void:
+	if not body.is_in_group("player"):
+		return
+	collected.emit()
+	queue_free()
+```
+
+### 步驟 3：在主場景放 10 顆星星
+
+1. 打開 `main.tscn`。
+2. 從檔案系統把 `star.tscn` 拖進場景，重複 10 次（或拖一次後選取它按 `Ctrl+D` 複製）。
+3. 把星星分散在場地內，避免放在牆裡或玩家出生點上。
+4. 為了整理，可以先建一個 `Node2D` 叫 `Stars`，把 10 顆星星都放在它底下。
+
+### 步驟 4：主場景計數
+
+擴充第 7 章的 `main.gd`：
+
+```gdscript
+# 示範概念：主場景負責計數與判定獲勝
+extends Node2D
+
+const STARS_TO_WIN := 10
+
+var stars_collected := 0
+
+func _ready() -> void:
+	for star in get_tree().get_nodes_in_group("stars"):
+		star.collected.connect(_on_star_collected)
+
+func _on_star_collected() -> void:
+	stars_collected += 1
+	print("星星：%d / %d" % [stars_collected, STARS_TO_WIN])
+	if stars_collected >= STARS_TO_WIN:
+		_win()
+
+func _win() -> void:
+	print("你贏了！按 R 重新開始")
+	for player in get_tree().get_nodes_in_group("player"):
+		player.set_physics_process(false)
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("restart"):
+		get_tree().reload_current_scene()
+```
+
+執行遊戲，收集星星時輸出面板會顯示進度，收滿 10 顆後角色停止移動。
+
+### 步驟 5（選做）：用程式產生星星
+
+手動擺放適合設計關卡；若想要隨機位置，可以用 `PackedScene` 實例化：
+
+```gdscript
+# 示範概念：用程式產生星星
+const STAR_SCENE := preload("res://star.tscn")
+
+func spawn_stars(count: int, area: Rect2) -> void:
+	for i in count:
+		var star = STAR_SCENE.instantiate()  # 回傳型別是 Node，這裡刻意不標型別
+		star.position = Vector2(
+			randf_range(area.position.x, area.end.x),
+			randf_range(area.position.y, area.end.y)
+		)
+		add_child(star)
+		star.collected.connect(_on_star_collected)
+```
+
+隨機位置可能落在牆上或彼此重疊，完整做法需要檢查距離或使用預先定義的候選位置。
+
+## 程式碼解說
+
+- `signal collected`：沒有參數的訊號，代表「我被收集了」。這顆星星值多少分由主場景決定。
+- `if not body.is_in_group("player"): return`：只對玩家反應。之後若有會移動的障礙物也碰到星星，就不會被誤算。
+- `queue_free()`：本影格結束才刪除，讓訊號處理安全完成。
+- `get_tree().get_nodes_in_group("stars")`：取得場景中所有在 `stars` 群組的節點，不必寫死 10 個路徑。
+- `STARS_TO_WIN` 常數：把「10」集中在一處，日後要改關卡難度只要改一行。
+- `set_physics_process(false)`：停止玩家的 `_physics_process`，角色就不再移動。這是最簡單的做法，第 10 章會改成更完整的遊戲狀態管理。
+- `"%d / %d" % [a, b]`：多個值的字串格式化要用陣列。
+
+## 交給 agent 的提示詞
+
+<AgentTask
+  title="加入收集時的檢查與防呆"
+  prompt={`這是 Godot 4.x GDScript 2D 頂視角收集遊戲。星星場景根節點是 Area2D，會在玩家進入時發出 collected 訊號，主場景在 _ready 中連接所有 stars 群組的星星並計數。
+任務：防止同一顆星星在同一個影格被重複計數，並在遊戲開始時檢查場景中星星的數量。
+要求：
+1. 先閱讀星星腳本與主場景腳本，說明計畫與要修改的檔案，等我同意。
+2. 若星星數量不等於 10，用 push_warning 印出警告，但遊戲仍可執行。
+3. 不要修改任何 .tscn 檔。
+4. 執行 godot --path . --headless --quit-after 120 2>&1 | tail -n 30，貼出結果，並說明輸出中應該出現或不應該出現哪些訊息。
+5. 列出我需要在遊戲視窗中手動測試的情況。`}
+/>
+
+## 自我檢查
+
+- [ ] 碰到星星時，星星消失且輸出面板的計數加一。
+- [ ] 收到第 10 顆時出現獲勝訊息，角色停止移動。
+- [ ] 按 R 後星星全部回來、計數歸零。
+- [ ] 修改 `star.tscn` 的顏色後，10 顆星星一起改變。
+- [ ] 開啟「除錯 → 顯示碰撞形狀」時，星星的碰撞圓和外觀大致重合。
+
+## 練習
+
+1. 讓星星持續緩慢旋轉（在星星腳本加入 `_process`，修改 `rotation`）。
+2. 新增一種「大星星」場景，繼承自 `star.tscn`（在檔案系統對 `star.tscn` 右鍵「新增繼承場景」），外觀較大，並讓 `collected` 訊號帶一個 `value` 參數，大星星算 2 顆。思考此時獲勝條件應該是「收集 10 顆」還是「分數達到 10」，並在程式中寫清楚。
+3. 把碰撞層命名為 player、walls、pickups，並重新設定玩家與星星的 Layer／Mask，確認遊戲行為不變。
+
+## 常見錯誤與限制
+
+- **碰到星星沒反應**：確認玩家有加入 `player` 群組（群組名稱大小寫要一致）、星星的 `Monitoring` 是開啟的、星星的 Mask 包含玩家的 Layer。
+- **計數超過 10**：同一顆星星被重複觸發，或某個星星被連接了兩次訊號。前者可以在發出訊號後立刻停用碰撞（記得用 `set_deferred`），後者檢查 `.tscn` 中是否也有連接。
+- **重開後計數沒歸零**：若把計數放在 Autoload（全域單例）中，`reload_current_scene()` 不會重設它。本章把計數放在主場景，重開時會自然歸零。
+- **在 `_ready` 之後才產生的星星沒被計數**：`get_nodes_in_group` 只抓得到當下已存在的節點，動態產生的星星要在產生時連接訊號（如步驟 5）。
+
+下一章加入障礙物與失敗條件：[09｜障礙、受傷與早期 Web 匯出](../09-2d-hazards/)。
+
+## 對照可下載的階段專案
+
+上面的操作讓你練習手動建立節點；下載版用程式建立同樣職責的物件，節點在執行後才出現在 Remote 場景樹。請以遊戲行為對照，並用以下原始碼認識另一種組合方式。
+
+<SourceExcerpt dimension="2d" stage="02-collect" file="main" method="collect_item" />
+
+## 官方參考
+
+- Area2D：https://docs.godotengine.org/en/4.7/classes/class_area2d.html
+- 物理介紹（碰撞層與遮罩）：https://docs.godotengine.org/en/4.7/tutorials/physics/physics_introduction.html
+- 群組：https://docs.godotengine.org/en/4.7/tutorials/scripting/groups.html
+- 場景實例化（PackedScene）：https://docs.godotengine.org/en/4.7/tutorials/scripting/nodes_and_scene_instances.html

@@ -1,0 +1,191 @@
+---
+title: "10｜2D 遊戲（四）：UI 與遊戲狀態"
+description: "用 CanvasLayer 製作固定在畫面上的 HUD，顯示星星與受傷次數；用列舉管理「進行中、獲勝、失敗」三種狀態，搭配結果面板、暫停與 R 重新開始。"
+sidebar:
+  order: 10
+---
+
+import LessonDiagram from '../../../components/LessonDiagram.astro';
+import AgentTask from '../../../components/AgentTask.astro';
+import SourceExcerpt from '../../../components/SourceExcerpt.astro';
+
+## 學習目標
+
+1. 用 `CanvasLayer` 與 `Control` 節點建立不受鏡頭影響的 HUD。
+2. 用容器（Container）與錨點（Anchor）讓 UI 在不同視窗大小下都在正確位置。
+3. 把散落的 `print` 換成畫面上的「星星 x / 10」「受傷 x / 3」。
+4. 用 `enum` 建立遊戲狀態機，集中處理狀態切換，避免「已經贏了還會受傷」這類錯誤。
+5. 在獲勝或失敗時顯示結果面板，並暫停遊戲世界但保留 R 重開的功能。
+
+本章對應 2D 範例的「04 interface」階段，見 [下載頁](../../downloads/)。
+
+## 核心概念
+
+### CanvasLayer：畫在另一層
+
+主場景中的節點會跟著 `Camera2D` 移動。HUD 必須固定在螢幕上，所以把 UI 放在 `CanvasLayer` 底下，它有自己的繪製層，不受遊戲鏡頭影響，且預設畫在遊戲世界上方。
+
+### 狀態機：同一時間只有一種狀態
+
+目前程式中的獲勝與失敗是分散判斷的，可能出現這些問題：獲勝後碰到障礙物仍然扣次數、失敗後還能撿星星。把遊戲整體狀態集中成一個變數，每個事件處理前先檢查狀態，就能一次解決。
+
+<LessonDiagram kind="state" />
+
+| 目前狀態 | 事件 | 下一個狀態 |
+| --- | --- | --- |
+| PLAYING | 星星數達到 10 | WON |
+| PLAYING | 受傷次數達到 3 | LOST |
+| WON 或 LOST | 按 R | 重新載入場景，回到 PLAYING |
+| WON 或 LOST | 碰到星星或障礙 | 忽略 |
+
+## 動手操作
+
+### 步驟 1：建立 HUD 場景
+
+1. 新增場景，根節點 `CanvasLayer`，命名 `HUD`，存成 `hud.tscn`。
+2. 加入 `MarginContainer`，在 2D 視窗上方工具列的「錨點預設」選「全矩形」（Full Rect），在檢查器 `Theme Overrides → Constants` 把四邊邊距設為 `16`。
+3. 在 `MarginContainer` 底下加 `HBoxContainer`，再加兩個 `Label`，分別命名 `StarsLabel` 與 `HitsLabel`。
+4. 對 `HBoxContainer` 設定 `Size Flags Vertical` 為 `Shrink Begin`，讓它貼在上方。
+5. 在 `HUD` 下另加一個 `PanelContainer`，命名 `ResultPanel`，錨點選「置中」（Center），裡面放 `VBoxContainer`，再放兩個 `Label`：`ResultLabel` 與 `HintLabel`（文字「按 R 重新開始」）。預設把 `ResultPanel` 的 `Visible` 取消勾選。
+
+### 步驟 2：HUD 腳本只負責「顯示」
+
+```gdscript
+# 示範概念：HUD 只負責把數值顯示出來
+extends CanvasLayer
+
+@onready var stars_label: Label = %StarsLabel
+@onready var hits_label: Label = %HitsLabel
+@onready var result_panel: PanelContainer = %ResultPanel
+@onready var result_label: Label = %ResultLabel
+
+func update_stars(collected: int, goal: int) -> void:
+	stars_label.text = "星星 %d / %d" % [collected, goal]
+
+func update_hits(hits: int, max_hits: int) -> void:
+	hits_label.text = "受傷 %d / %d" % [hits, max_hits]
+
+func show_result(message: String) -> void:
+	result_label.text = message
+	result_panel.show()
+```
+
+這裡用 `%` 唯一名稱存取，請在場景面板對四個節點按右鍵勾選「以唯一名稱存取」。把 `hud.tscn` 拖進 `main.tscn`。
+
+### 步驟 3：主場景的狀態機
+
+把第 8、9 章的判斷整理成：
+
+```gdscript
+# 示範概念：集中管理遊戲狀態
+extends Node2D
+
+enum GameState { PLAYING, WON, LOST }
+
+const STARS_TO_WIN := 10
+const MAX_HITS := 3
+
+var state := GameState.PLAYING
+var stars_collected := 0
+var hits := 0
+
+@onready var hud = $HUD  # 刻意不標型別，見下方解說
+
+func _ready() -> void:
+	# 連接星星與障礙訊號的程式同第 8、9 章，此處省略
+	hud.update_stars(stars_collected, STARS_TO_WIN)
+	hud.update_hits(hits, MAX_HITS)
+
+func _on_star_collected() -> void:
+	if state != GameState.PLAYING:
+		return
+	stars_collected += 1
+	hud.update_stars(stars_collected, STARS_TO_WIN)
+	if stars_collected >= STARS_TO_WIN:
+		_change_state(GameState.WON)
+
+func _change_state(new_state: GameState) -> void:
+	state = new_state
+	match state:
+		GameState.WON:
+			hud.show_result("你贏了！")
+			get_tree().paused = true
+		GameState.LOST:
+			hud.show_result("失敗了……")
+			get_tree().paused = true
+```
+
+受傷處理也一樣：先檢查 `state`，增加次數、更新 HUD，到達上限時呼叫 `_change_state(GameState.LOST)`。
+
+### 步驟 4：暫停與 Process Mode
+
+`get_tree().paused = true` 會停止所有節點的處理，包括主場景本身的 `_unhandled_input`，這樣按 R 就沒反應了。解法是設定節點的 `Process Mode`：
+
+1. 選取 `Main` 根節點，在檢查器 `Process → Mode` 設為 `Always`。
+2. 但這樣子節點預設會繼承「Always」，玩家也不會暫停。所以要把玩家、星星、障礙物所在的節點設為 `Pausable`。最簡單的做法是把遊戲物件都放在一個 `Node2D` 叫 `World` 底下，把 `World` 設為 `Pausable`。
+3. `HUD` 保持繼承即可。
+
+重新載入場景前要解除暫停，否則新場景一開始就是暫停的：
+
+```gdscript
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("restart"):
+		get_tree().paused = false
+		get_tree().reload_current_scene()
+```
+
+## 程式碼解說
+
+- **HUD 只顯示，不判斷**：HUD 不知道勝負規則，只提供 `update_stars`、`show_result` 這類函式。規則全部在主場景。之後要換 UI 外觀，不會動到遊戲邏輯。
+- **`_change_state` 是唯一修改狀態的地方**：所有「進入獲勝」「進入失敗」要做的事情都集中在這裡，不會散落各處。
+- **事件開頭的 `if state != GameState.PLAYING: return`**：這一行就是防止「贏了還受傷」的關鍵，稱為守衛條件（guard clause）。
+- **`@onready var hud = $HUD`**：`$HUD` 的靜態型別只是一般節點，若寫成 `:=` 讓它推斷為節點型別，呼叫 HUD 自訂的 `update_stars` 時可能被型別檢查擋下。這裡先不標型別讓範例能執行；更好的做法是在 HUD 腳本開頭加上 `class_name Hud`，再寫成 `@onready var hud: Hud = $HUD`，編輯器就能完整檢查函式名稱與參數。
+
+## 交給 agent 的提示詞
+
+<AgentTask
+  title="稽核狀態轉換"
+  prompt={`這是 Godot 4.x GDScript 2D 收集遊戲。主場景用 enum 管理 PLAYING、WON、LOST 三種狀態，HUD 是 CanvasLayer。請先不要修改檔案。
+1. 閱讀主場景、HUD、玩家、星星、障礙物的腳本，列出所有會改變 state、stars_collected、hits 的程式位置。
+2. 逐一檢查以下情境是否會出錯並說明原因：獲勝後碰到障礙、失敗後碰到星星、同一影格同時撿到第 10 顆星並受到第 3 次傷害、暫停時按 R。
+3. 檢查各節點的 process_mode 設定（從 .tscn 讀取），說明暫停時哪些節點仍在運作。
+4. 若發現問題，提出最小修改方案並標示要改的檔案，等我同意後再改。`}
+/>
+
+## 自我檢查
+
+- [ ] 左上角即時顯示「星星 x / 10」與「受傷 x / 3」。
+- [ ] 加入 `Camera2D` 並移動時，HUD 固定不動。
+- [ ] 獲勝或失敗時畫面中央出現結果面板，障礙物停止移動。
+- [ ] 結果面板出現後碰不到任何東西，數字不再變化。
+- [ ] 按 R 能從獲勝或失敗畫面重開，且新的一局沒有被暫停。
+- [ ] 把視窗拉大或縮小，HUD 仍貼在左上、結果面板仍置中。
+
+## 練習
+
+1. 在結果面板加一個 `Button`「再玩一次」，用 `pressed` 訊號觸發和 R 相同的重開函式（記得按鈕節點的 Process Mode 要能在暫停時運作）。
+2. 加入第四個狀態 `READY`：遊戲開始時顯示「按任意方向鍵開始」，玩家第一次移動才進入 `PLAYING`。更新狀態表。
+3. 用 `Theme` 資源統一所有 `Label` 的字型大小與顏色，而不是一個個調整。
+
+## 常見錯誤與限制
+
+- **HUD 跟著鏡頭跑**：UI 沒有放在 `CanvasLayer` 底下。
+- **按 R 沒反應**：處理輸入的節點被暫停了，檢查它的 `Process Mode`。
+- **重開後一開始就暫停**：重新載入前沒有把 `paused` 設回 `false`。
+- **UI 擋住遊戲的滑鼠或觸控輸入**：`Control` 節點預設會攔截滑鼠事件，把不需要互動的 UI 的 `Mouse → Filter` 設為 `Ignore`。
+- **中文字顯示成方塊**：預設字型可能不含你需要的中文字。可以匯入一個授權允許嵌入的開源中文字型（例如 Noto Sans TC，採 SIL Open Font License），在專案設定的 GUI 主題中設為預設字型。Web 版尤其要注意，因為瀏覽器中無法使用系統字型作為後備。
+
+下一章加入音效與回饋：[11｜音效與手感潤飾](../11-audio-polish/)。
+
+## 對照可下載的階段專案
+
+上面的操作讓你練習手動建立節點；下載版用程式建立同樣職責的物件，節點在執行後才出現在 Remote 場景樹。請以遊戲行為對照，並用以下原始碼認識另一種組合方式。
+
+<SourceExcerpt dimension="2d" stage="04-interface" file="main" method="update_hud" />
+
+## 官方參考
+
+- CanvasLayer：https://docs.godotengine.org/en/4.7/tutorials/2d/canvas_layers.html
+- 使用容器：https://docs.godotengine.org/en/4.7/tutorials/ui/gui_containers.html
+- 暫停遊戲與 Process Mode：https://docs.godotengine.org/en/4.7/tutorials/scripting/pausing_games.html
+- 場景唯一節點：https://docs.godotengine.org/en/4.7/tutorials/scripting/scene_unique_nodes.html

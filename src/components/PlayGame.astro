@@ -1,0 +1,32 @@
+---
+interface Props {game:'2d'|'3d';title:string;}
+const {game,title}=Astro.props;const base=import.meta.env.BASE_URL.replace(/\/?$/, '/');
+---
+<div class="play-card" data-src={`${base}play/${game}/index.html`} data-title={title}>
+ <div class="play-placeholder"><div><img src={`${base}previews/${game}.png`} alt={`${title}的實際遊戲畫面`} loading="lazy"/><p>按下「載入遊戲」才下載 Godot 執行檔。<br/>請使用支援 WebGL 2 的桌機瀏覽器與鍵盤。</p></div></div>
+ <button type="button" class="course-link primary load-game">載入遊戲</button>
+ <a class="course-link" href={`${base}play/${game}/index.html`} target="_blank" rel="noopener">獨立視窗試玩 ↗</a>
+ <p class="game-status" role="status"></p>
+</div>
+<script>
+ const placeholders=new WeakMap<HTMLElement,Node>();
+ const cards=Array.from(document.querySelectorAll<HTMLElement>('.play-card'));
+ function unload(card:HTMLElement){
+  const frame=card.querySelector('iframe');const original=placeholders.get(card);
+  if(frame&&original)frame.replaceWith(original.cloneNode(true));
+  card.querySelector('.load-game')!.textContent='載入遊戲';
+  card.querySelector('.game-status')!.textContent='';
+ }
+ cards.forEach(card=>{
+ const original=card.querySelector('.play-placeholder');if(original)placeholders.set(card,original.cloneNode(true));
+ card.querySelector<HTMLButtonElement>('.load-game')!.addEventListener('click',()=>{
+  if(card.querySelector('iframe')){unload(card);return;}
+  const placeholder=card.querySelector('.play-placeholder');if(!placeholder)return;
+  const canvas=document.createElement('canvas');
+  if(!canvas.getContext('webgl2')){card.querySelector('.game-status')!.textContent='此瀏覽器未提供 WebGL 2，請下載專案在 Godot 執行，或改用支援的桌機瀏覽器。';return;}
+  cards.filter(other=>other!==card).forEach(unload);
+  const iframe=document.createElement('iframe');iframe.src=card.dataset.src!;iframe.title=card.dataset.title!;iframe.allow='autoplay; fullscreen';iframe.setAttribute('allowfullscreen','');
+  iframe.addEventListener('load',()=>{if(card.contains(iframe))card.querySelector('.game-status')!.textContent='遊戲頁面已載入。點一下遊戲畫面取得鍵盤焦點；引擎載入進度顯示於畫面中。';});
+  placeholder.replaceWith(iframe);card.querySelector('.load-game')!.textContent='卸載遊戲';
+ });});
+</script>

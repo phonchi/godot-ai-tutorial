@@ -1,0 +1,174 @@
+---
+title: "07｜2D 遊戲（一）：頂視角移動與邊界"
+description: "開始製作 2D 收集遊戲：設定 WASD 與方向鍵的輸入動作，用 CharacterBody2D 做出頂視角八方向移動，加上牆壁碰撞與按 R 重新開始。"
+sidebar:
+  order: 7
+---
+
+import LessonDiagram from '../../../components/LessonDiagram.astro';
+import AgentTask from '../../../components/AgentTask.astro';
+import SourceExcerpt from '../../../components/SourceExcerpt.astro';
+
+## 學習目標
+
+這是 2D 遊戲的第一個階段。2D 遊戲的完整規格是：**頂視角視角，玩家用 WASD 或方向鍵移動，收集 10 顆星星獲勝，碰到障礙累計 3 次失敗，按 R 重新開始**。本章只完成移動部分：
+
+1. 在「輸入對應」（Input Map）中建立 `move_left`、`move_right`、`move_up`、`move_down`、`restart` 五個動作。
+2. 用 `CharacterBody2D` 建立玩家場景，用基本形狀當外觀，不需要任何圖片素材。
+3. 寫出八方向移動腳本，斜向移動速度不會變快。
+4. 用 `StaticBody2D` 圍出場地邊界，玩家撞牆會停下。
+5. 按 R 重新載入場景。
+
+完成後可以下載 2D 範例的「01 movement」階段對照，見 [下載頁](../../downloads/)。
+
+## 核心概念
+
+### 2D 座標
+
+Godot 2D 的原點在左上角，**X 向右為正，Y 向下為正**。所以「往上走」是 Y 減少。這和數學課的座標方向相反，是新手最常搞反的地方。
+
+<LessonDiagram kind="coordinates" />
+
+### 為什麼用 CharacterBody2D
+
+Godot 有幾種 2D 物理節點：
+
+- `StaticBody2D`：不會動的物體，例如牆壁。
+- `RigidBody2D`：由物理引擎推動，例如會被撞飛的箱子。
+- `CharacterBody2D`：由**你的程式**決定速度，但碰到東西時會由引擎處理滑動與停止。最適合玩家角色。
+- `Area2D`：不擋路，只偵測誰進出，下一章的星星會用它。
+
+`CharacterBody2D` 有一個 `Motion Mode` 屬性。預設的 `Grounded` 適合有重力、有地板的橫向卷軸遊戲；頂視角遊戲沒有「地板」的概念，請改成 **`Floating`**，碰撞時的滑動行為會更自然。
+
+## 動手操作
+
+### 步驟 1：建立專案與輸入動作
+
+1. 用專案管理員建立新專案，繪圖器選 **Compatibility**（之後要匯出 Web）。
+2. 開啟「專案 → 專案設定 → 輸入對應」（Project → Project Settings → Input Map）。
+3. 在「新增動作」欄位依序新增 `move_left`、`move_right`、`move_up`、`move_down`、`restart`。
+4. 每個動作按右側「+」綁定按鍵：
+
+| 動作 | 按鍵 |
+| --- | --- |
+| `move_left` | A、左方向鍵 |
+| `move_right` | D、右方向鍵 |
+| `move_up` | W、上方向鍵 |
+| `move_down` | S、下方向鍵 |
+| `restart` | R |
+
+Godot 內建的 `ui_left` 等動作只綁了方向鍵（和手把），沒有 WASD，而且是給選單介面用的，所以我們自己建立遊戲用的動作。輸入對應會被存進 `project.godot`，這部分建議在編輯器中手動完成，比讓 agent 直接改設定檔安全。
+
+### 步驟 2：建立玩家場景
+
+1. 新增場景，根節點選 `CharacterBody2D`，改名為 `Player`。
+2. 在檢查器中把 `Motion Mode` 設為 `Floating`。
+3. 加入子節點 `CollisionShape2D`，`Shape` 選「新增 CircleShape2D」，半徑設為 `16`。
+4. 加入子節點 `Polygon2D` 當外觀。在檢查器的 `Polygon` 陣列中輸入一個以原點為中心的形狀，或者改用 `ColorRect`（記得把它的位置調整成以原點為中心，例如位置 `(-16, -16)`、大小 `(32, 32)`）。
+5. 在節點面板的「群組」分頁，把 `Player` 加入 `player` 群組，之後的星星與障礙物會用它辨識玩家。
+6. 存成 `player.tscn`。
+
+### 步驟 3：附加移動腳本
+
+對 `Player` 附加新腳本 `player.gd`：
+
+```gdscript
+# 示範概念：頂視角八方向移動
+extends CharacterBody2D
+
+@export var speed: float = 240.0
+
+func _physics_process(_delta: float) -> void:
+	var direction := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	velocity = direction * speed
+	move_and_slide()
+```
+
+按 F6 單獨執行玩家場景，按 WASD 或方向鍵應該能移動（此時沒有牆，角色可能跑出畫面）。
+
+### 步驟 4：建立主場景與牆壁
+
+1. 新增場景，根節點 `Node2D`，命名 `Main`，存成 `main.tscn`。
+2. 把 `player.tscn` 從檔案系統拖進場景中，放在畫面中央附近（預設視窗 1152×648 時，中央約是 `(576, 324)`）。
+3. 新增子節點 `StaticBody2D` 命名為 `Walls`，在它底下加四個 `CollisionShape2D`，形狀都用 `RectangleShape2D`，分別擺在畫面的上、下、左、右邊緣。
+4. 為了看得到牆，可以在 `Walls` 底下加四個 `ColorRect` 對齊碰撞形狀；或在執行時開啟「除錯 → 顯示碰撞形狀」（Debug → Visible Collision Shapes）。
+5. 在「專案設定 → 應用程式 → 執行」把 `main.tscn` 設為主場景，按 F5 執行。
+
+### 步驟 5：按 R 重新開始
+
+對 `Main` 附加腳本 `main.gd`：
+
+```gdscript
+# 示範概念：按 R 重新載入目前場景
+extends Node2D
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("restart"):
+		get_tree().reload_current_scene()
+```
+
+把重開放在主場景而不是玩家身上，是因為「重開遊戲」是整局的事情，之後玩家失敗被移除時，重開功能仍然要能用。
+
+## 程式碼解說
+
+- `@export var speed: float = 240.0`：`@export` 讓這個變數出現在檢查器中，不改程式就能調整速度。單位是「像素／秒」。
+- `Input.get_vector(...)`：依序傳入負 X、正 X、負 Y、正 Y 四個動作，回傳一個 `Vector2`。它已經把長度限制在 1 以內，所以斜向移動不會比直線快；若玩家同時按左右，兩者會互相抵消。
+- `velocity = direction * speed`：`velocity` 是 `CharacterBody2D` 內建的屬性。這裡直接設定速度，放開按鍵時 `direction` 為零，角色立刻停下。若想要加速與減速的手感，可以改用 `velocity.move_toward(...)` 逐步逼近目標速度。
+- `move_and_slide()`：依照 `velocity` 移動，遇到碰撞時沿著表面滑動。它內部已經使用物理影格的時間，所以這裡**不需要**再乘 `delta`。
+- `_delta` 前面的底線：告訴 Godot 這個參數刻意不使用，避免出現「未使用參數」警告。
+- `event.is_action_pressed("restart")`：只在按下那一刻觸發一次，不會因為按住而連續重開。
+
+## 交給 agent 的提示詞
+
+建議你自己完成輸入對應與場景建立，然後把腳本工作交給 agent：
+
+<AgentTask
+  title="加入移動手感（加速與減速）"
+  prompt={`這是 Godot 4.x GDScript 的 2D 頂視角專案。玩家是 CharacterBody2D，腳本在 player.gd，輸入動作 move_left、move_right、move_up、move_down 已在專案設定建立。
+任務：讓玩家移動有加速與減速，而不是瞬間到達最高速度。
+要求：
+1. 先讀 player.gd，說明你的修改計畫，等我同意。
+2. 只修改 player.gd。新增 @export 的 acceleration 與 friction 兩個變數，讓我能在檢查器調整。
+3. 保留現有的 speed 變數與 move_and_slide 呼叫。
+4. 修改後執行 godot --path . --headless --quit-after 120 2>&1 | tail -n 30 並貼出結果。
+5. 告訴我在遊戲中要測試哪些情況（例如放開按鍵後是否會滑行一小段距離）。`}
+/>
+
+## 自我檢查
+
+- [ ] 按 W 角色往畫面上方移動，按 S 往下。
+- [ ] 同時按 W 和 D 斜向移動時，速度看起來和直線差不多。
+- [ ] 角色撞到四面牆都會停下，貼著牆斜走會沿牆滑動。
+- [ ] 按 R 角色回到起始位置。
+- [ ] 在檢查器修改 `speed` 後重新執行，速度確實改變。
+- [ ] `godot --path . --headless --quit-after 120` 沒有錯誤。
+
+## 練習
+
+1. 加入一個 `Camera2D` 作為玩家的子節點，把場地放大成兩倍，觀察鏡頭跟隨的效果；再試著設定鏡頭的 `Limit` 屬性，讓鏡頭不會照到場地外。
+2. 在場地中間加幾塊 `StaticBody2D` 障礙牆，測試角色貼牆滑動的感覺，比較 `Motion Mode` 為 `Grounded` 與 `Floating` 時的差別。
+3. 讓角色的外觀在移動時朝向移動方向旋轉（提示：`rotation = direction.angle()`，但只在方向不為零時更新）。
+
+## 常見錯誤與限制
+
+- **按鍵沒反應**：動作名稱拼錯（`move_lfet`）時，Godot 會在輸出面板出現找不到該動作的錯誤。也要確認遊戲視窗有取得鍵盤焦點。
+- **上下顛倒**：記得 2D 的 Y 軸向下為正。
+- **角色穿牆**：牆的 `CollisionShape2D` 沒有設定形狀，或牆用了 `Area2D` 而不是 `StaticBody2D`。也要確認玩家與牆的碰撞層和遮罩有對上（預設都是第 1 層，通常沒問題）。
+- **碰撞形狀和外觀不對齊**：`ColorRect` 的位置以左上角為基準，`CollisionShape2D` 以中心為基準，需要手動調整位移。開啟「顯示碰撞形狀」最容易看出問題。
+- **在 `_process` 中呼叫 `move_and_slide()`**：可以執行，但物理行為會隨影格率變動，請放在 `_physics_process`。
+- **WSLg 視窗中按鍵偶爾失靈**：多半是焦點問題，點一下遊戲視窗再試。
+
+下一章會在場地中放入 10 顆星星：[08｜收集星星與計數](../08-2d-collection/)。
+
+## 對照可下載的階段專案
+
+上面的操作讓你練習手動建立節點；下載版用程式建立同樣職責的物件，節點在執行後才出現在 Remote 場景樹。請以遊戲行為對照，並用以下原始碼認識另一種組合方式。
+
+<SourceExcerpt dimension="2d" stage="01-movement" file="player" />
+
+## 官方參考
+
+- CharacterBody2D 使用說明：https://docs.godotengine.org/en/4.7/tutorials/physics/using_character_body_2d.html
+- 輸入範例與 Input Map：https://docs.godotengine.org/en/4.7/tutorials/inputs/input_examples.html
+- Input.get_vector：https://docs.godotengine.org/en/4.7/classes/class_input.html
+- 官方入門「你的第一個 2D 遊戲」：https://docs.godotengine.org/en/4.7/getting_started/first_2d_game/index.html

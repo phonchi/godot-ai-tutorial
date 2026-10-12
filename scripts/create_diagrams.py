@@ -1,0 +1,26 @@
+from pathlib import Path
+p=Path('src/components/LessonDiagram.astro')
+p.write_text('''---
+interface Props {kind?:'scene'|'signal'|'workflow'|'state'|'coordinates';}
+const {kind='workflow'}=Astro.props;
+const id=`diagram-${kind}-${crypto.randomUUID().slice(0,8)}`;
+const diagrams={
+ scene:{title:'場景與節點：先分工，再組合',desc:'Main 管理遊戲，Player、物件容器與 HUD 分別負責角色、場景物件與介面。',nodes:[['Main',240,16,160,52],['Player',24,140,160,52],['World objects',240,140,160,52],['HUD',456,140,160,52],['碰撞與外觀',24,244,160,52]],lines:['M280 68 V96 Q280 104 272 104 H112 Q104 104 104 112 V140','M320 68 V140','M360 68 V96 Q360 104 368 104 H528 Q536 104 536 112 V140','M104 192 V244'],labels:[]},
+ signal:{title:'收集訊號如何更新介面',desc:'玩家接觸收集物，收集物通知 Main，Main 更新分數，再讓 HUD 顯示。時間由上往下。',nodes:[['收集物',16,16,160,52],['Main',240,16,160,52],['HUD',464,16,160,52]],lines:['M96 68 V304','M320 68 V304','M544 68 V304','M96 136 H320','M320 216 H544'],labels:[['通知收集',208,116],['更新分數',432,196]]},
+ workflow:{title:'一次只完成一個可確認的改動',desc:'先描述規則，agent 讀專案並修改，執行 Godot 後依紀錄與實際畫面核對，再回報下一次修改。',nodes:[['你：描述規則',16,32,176,64],['Agent：讀取與修改',232,32,176,64],['Godot：執行',448,32,176,64],['你：核對行為',448,220,176,64],['Agent：依證據修正',232,220,176,64]],lines:['M192 64 H232','M408 64 H448','M536 96 V220','M448 252 H408','M320 220 V96'],labels:[['讀取結果',592,170,96],['回報問題',240,164,144]]},
+ state:{title:'用遊戲狀態限制行為',desc:'遊戲進行時可以移動與收集，達成條件轉為勝利或失敗；重新開始回到進行中。',nodes:[['進行中',240,32,160,56],['勝利',24,192,160,56],['失敗',456,192,160,56]],lines:['M280 88 V128 Q280 136 272 136 H112 Q104 136 104 144 V192','M360 88 V128 Q360 136 368 136 H528 Q536 136 536 144 V192','M24 220 H16 Q8 220 8 212 V24 Q8 16 16 16 H216 Q224 16 224 24 V40 Q224 48 232 48 H240','M616 232 H624 Q632 232 632 224 V24 Q632 16 624 16 H424 Q416 16 416 24 V64 Q416 72 408 72 H400'],labels:[['收集達標',180,116],['生命耗盡',460,116]]},
+ coordinates:{title:'3D 移動先看座標，再看鏡頭',desc:'Godot 3D 使用 X、Y、Z 座標。地面移動沿 X 與 Z，重力與跳躍改變 Y。鏡頭視角不會改變世界座標。',nodes:[['X：左右',24,44,176,60],['Z：前後',232,44,176,60],['Y：上下',440,44,176,60],['水平速度：X / Z',112,204,192,60],['垂直速度：Y',344,204,192,60]],lines:['M112 104 V160 Q112 168 120 168 H200 Q208 168 208 176 V204','M320 104 V148 Q320 156 312 156 H280 Q272 156 272 164 V204','M528 104 V156 Q528 164 520 164 H448 Q440 164 440 172 V204'],labels:[]}
+};
+const d=diagrams[kind];
+---
+<figure class="lesson-figure">
+ <div class="diagram-scroll"><svg viewBox="0 0 640 336" role="img" aria-labelledby={`${id}-title ${id}-desc`}>
+ <title id={`${id}-title`}>{d.title}</title><desc id={`${id}-desc`}>{d.desc}</desc>
+ <defs><marker id={`${id}-arrow`} viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#6b6960"/></marker></defs>
+ {d.lines.map((line,index)=><path d={line} fill="none" stroke="#8a877d" stroke-width="1.5" stroke-dasharray={kind==='signal'&&index<3?'5 5':undefined} marker-end={kind==='signal'&&index<3?undefined:`url(#${id}-arrow)`}/>)}
+ {d.labels.map(([label,x,y,w=146])=><g><rect x={Number(x)-Number(w)/2} y={Number(y)-19} width={w} height="26" fill="#fff"/><text x={x} y={y} text-anchor="middle" fill="#55534c" font-size="14">{label}</text></g>)}
+ {d.nodes.map(([label,x,y,w,h],index)=><g><rect x={x} y={y} width={w} height={h} rx="6" fill={index===0?'#fbe9df':'#faf9f5'} stroke={index===0?'#984832':'#d1cfc5'} stroke-width="1.5"/><text x={Number(x)+Number(w)/2} y={Number(y)+Number(h)/2+6} text-anchor="middle" fill="#30302d" font-size="17" font-weight="600">{label}</text></g>)}
+ </svg></div><figcaption><strong>{d.title}。</strong>{d.desc}</figcaption>
+</figure>
+''')
+print('Created five shared accessible diagrams')

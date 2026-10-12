@@ -1,0 +1,182 @@
+---
+title: "05｜專案規則：先用 Git 備份，再寫 AGENTS.md 與 CLAUDE.md"
+description: "在讓 AI agent 修改專案之前，先建立 Git 備份與 Godot 專用的 .gitignore，再寫一份最小可用的 AGENTS.md（Codex）與 CLAUDE.md（Claude Code），並了解兩者讀取方式的差異。"
+sidebar:
+  order: 5
+---
+
+import LessonDiagram from '../../../components/LessonDiagram.astro';
+import AgentTask from '../../../components/AgentTask.astro';
+
+## 學習目標
+
+1. 在專案資料夾初始化 Git，設定適合 Godot 4 的 `.gitignore`，完成第一次提交。
+2. 理解為什麼「先備份、再讓 agent 動手」是不能省略的步驟。
+3. 寫出一份精簡的專案規則檔，涵蓋專案背景、驗證指令、修改限制。
+4. 知道 Codex 讀 `AGENTS.md`、Claude Code 讀 `CLAUDE.md`，以及如何讓兩者共用同一份規則。
+
+## 核心概念
+
+### Git 是你的「復原按鈕」
+
+agent 可以在幾秒內修改十幾個檔案。如果結果不對，而你沒有備份，就只能靠記憶還原。Git 讓每一次確認過的狀態都成為一個存檔點：
+
+- 修改前：工作目錄是乾淨的（`git status` 沒有變更）。
+- 修改後：用 `git diff` 精確看到改了什麼。
+- 不滿意：用 `git restore` 回到上一個存檔點。
+
+### 規則檔是給 agent 的「專案說明書」
+
+每次開新對話，agent 都不記得上次的事情。規則檔會在對話開始時被自動讀入，讓它知道：這是什麼專案、怎麼驗證、哪些事不能做。規則檔應該**短而具體**：寫太多反而會被忽略或互相矛盾。
+
+<LessonDiagram kind="workflow" />
+
+## 動手操作
+
+### 步驟 1：初始化 Git 與 .gitignore
+
+在專案根目錄（有 `project.godot` 的那層）執行：
+
+```bash
+cd ~/godot-projects/star-collector
+git init
+```
+
+建立 `.gitignore`：
+
+```text
+# Godot 4 的快取與匯入結果，可重建
+.godot/
+
+# 匯出結果
+build/
+
+# 作業系統與編輯器暫存
+.DS_Store
+*.tmp
+```
+
+Godot 4 的重點是：**`.godot/` 資料夾不要提交**，它包含匯入快取，會在開啟專案時自動重建。而素材旁邊的 `*.import` 檔記錄了匯入設定，**要提交**，否則別人開專案時匯入設定會不同。新版 Godot 建立專案時可能會詢問是否產生 Git 相關檔案，若已產生，請檢查內容與上面一致即可。
+
+完成第一次提交：
+
+```bash
+git add -A
+git status          # 確認沒有 .godot/ 出現在清單中
+git commit -m "初始專案"
+```
+
+如果 Git 要求設定使用者名稱與信箱，依照提示用 `git config --global user.name` 與 `git config --global user.email` 設定。
+
+### 步驟 2：撰寫 AGENTS.md
+
+在專案根目錄建立 `AGENTS.md`。下面是本課程建議的最小版本，請依你的專案修改：
+
+```markdown
+# 專案規則
+
+## 專案
+- Godot 4.x（本課程指定穩定版）、GDScript、Compatibility 繪圖器。
+- 2D 頂視角收集遊戲，主場景 res://main.tscn。
+
+## 驗證
+- 語法與執行檢查：godot --path . --headless --quit-after 300 2>&1 | tail -n 50
+- 執行遊戲的指令一定要加 --quit 或 --quit-after，不可無限執行。
+- headless 通過不代表畫面正確；完成後列出需要人工在視窗中確認的項目。
+
+## 修改限制
+- 修改前先說明計畫與會改的檔案，等使用者同意。
+- 不要手動編輯 .tscn 與 project.godot，需要時列出步驟讓使用者在編輯器操作。
+- 不要新增外掛、下載素材或安裝套件。
+- 不要執行 git commit、git push 或刪除檔案；由使用者決定。
+
+## 程式風格
+- 使用靜態型別與 Tab 縮排。
+- 訊號在 _ready() 中用 connect() 連接。
+- 移動與物理寫在 _physics_process()。
+```
+
+### 步驟 3：撰寫 CLAUDE.md
+
+Claude Code 讀的是 `CLAUDE.md`。為了不維護兩份內容，可以讓 `CLAUDE.md` 匯入 `AGENTS.md`：
+
+```markdown
+@AGENTS.md
+
+## Claude Code 補充
+- 執行 godot 指令前不需要再次詢問；其他 shell 指令請先說明用途。
+```
+
+`@路徑` 是 Claude Code 規則檔的匯入語法，會把指定檔案的內容一併讀入。這樣兩個工具讀到的核心規則一致，各自的補充寫在各自的檔案中。
+
+### 步驟 4：確認 agent 有讀到規則
+
+分別啟動兩個工具並詢問：
+
+```text
+請用三句話摘要這個專案的規則，並告訴我驗證指令是什麼。
+```
+
+Claude Code 也可以用 `/memory` 查看目前載入了哪些規則檔（指令名稱以你版本的 `/help` 為準）。若回答與規則檔不符，檢查檔名大小寫與檔案位置是否在專案根目錄。
+
+提交規則檔：
+
+```bash
+git add AGENTS.md CLAUDE.md .gitignore
+git commit -m "加入 agent 規則檔"
+```
+
+## 程式碼解說：AGENTS.md 與 CLAUDE.md 的差異
+
+| 項目 | AGENTS.md | CLAUDE.md |
+| --- | --- | --- |
+| 主要讀取者 | Codex CLI（也有其他工具支援這個慣例） | Claude Code |
+| 專案層級位置 | 儲存庫根目錄，子資料夾也可放，越接近工作目錄的越優先 | 專案根目錄；子資料夾中的檔案在處理該資料夾時讀入 |
+| 個人全域規則 | `~/.codex/AGENTS.md` | `~/.claude/CLAUDE.md` |
+| 匯入其他檔案 | 無專用語法，直接寫內容 | 支援 `@路徑` 匯入 |
+| 個人但不提交的規則 | 依官方文件的覆寫機制 | `CLAUDE.local.md`（加入 `.gitignore`） |
+
+讀取規則的細節會隨版本更新，上表是撰寫時的行為，請以兩者官方文件為準。實務上最重要的只有兩點：**規則檔放在專案根目錄**、**內容短而可檢查**。
+
+規則檔中每一條都應該能回答「agent 有沒有遵守？」。像「寫出好程式」無法檢查；「使用靜態型別」可以從 diff 中檢查。
+
+## 交給 agent 的提示詞
+
+<AgentTask
+  title="審查我的規則檔"
+  prompt={`請閱讀專案根目錄的 AGENTS.md 與 CLAUDE.md，以及 .gitignore，不要修改任何檔案。
+1. 指出規則中模糊、無法從 git diff 或指令輸出檢查的條目，並建議更具體的寫法。
+2. 指出兩個檔案之間是否有矛盾。
+3. 檢查 .gitignore 是否忽略了 .godot/，且沒有忽略 *.import 檔。
+4. 執行 git status，確認工作目錄是否乾淨。
+用條列回報，修改建議請以「原文 → 建議」的格式呈現。`}
+/>
+
+## 自我檢查
+
+- [ ] `git log` 中至少有兩次提交：初始專案、規則檔。
+- [ ] `git status` 顯示工作目錄乾淨，`.godot/` 不在追蹤清單中。
+- [ ] 兩個 agent 都能正確摘要專案規則與驗證指令。
+- [ ] 規則檔總長度在一個畫面內讀得完。
+
+## 練習
+
+1. 故意請 agent 修改一個 `.tscn` 檔，觀察它是否依規則拒絕或先提出步驟讓你在編輯器操作。
+2. 在 `AGENTS.md` 中加一條你自己的規則（例如「所有使用者看得到的文字使用繁體中文」），請 agent 做一個小修改並檢查是否遵守。
+3. 建立一個實驗分支 `git switch -c experiment`，讓 agent 在分支上自由修改，完成後切回 `main` 比較差異，再決定要合併或刪除分支。
+
+## 常見錯誤與限制
+
+- **把 `.godot/` 提交進去**：儲存庫會變得很大，且在不同電腦間產生大量無意義的衝突。若已提交，執行 `git rm -r --cached .godot` 後重新提交。
+- **忽略了 `*.import`**：其他人或另一台電腦開啟專案時，素材匯入設定可能不同，例如像素圖變模糊。
+- **規則檔太長**：幾百行的規則會稀釋重點，agent 也可能遺漏。只寫專案特有、且常被違反的事情。
+- **以為規則檔有強制力**：規則檔是指示，不是安全機制。真正限制 agent 能做什麼的是工具的權限設定與沙箱，以及你在提交前的 diff 審查。
+- **檔名錯誤**：`Agents.md`、`claude.md` 等大小寫不同的檔名在 Linux 上不會被識別。
+
+## 官方參考
+
+- Claude Code 記憶與 CLAUDE.md：https://code.claude.com/docs （搜尋 memory）
+- Codex 與 AGENTS.md：https://developers.openai.com/codex （搜尋 AGENTS.md）
+- AGENTS.md 慣例說明：https://agents.md
+- Godot 版本控制系統說明：https://docs.godotengine.org/en/4.7/tutorials/best_practices/version_control_systems.html
+- Git 官方文件：https://git-scm.com/doc

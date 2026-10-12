@@ -1,0 +1,237 @@
+---
+title: "18｜選修：用 MCP 擴充 agent 的 Godot 能力"
+description: "認識 Model Context Protocol（MCP）能為 Claude Code 與 Codex CLI 帶來什麼、不能帶來什麼；以社群專案 godot-mcp 為例，固定版本建置、以唯讀模式與專案範圍加入，並清楚理解「唯讀模式」實際限制了什麼。"
+sidebar:
+  order: 18
+---
+
+import LessonDiagram from '../../../components/LessonDiagram.astro';
+import AgentTask from '../../../components/AgentTask.astro';
+
+:::note[本章是選修]
+本課程主線（第 1–17 章）完全不需要 MCP：agent 直接讀寫專案檔、執行 Godot CLI、讀日誌，再由你在視窗中確認畫面，就能完成兩款遊戲。本章使用的 godot-mcp（https://github.com/bradypp/godot-mcp）是**社群專案**，不是 Godot 官方、Anthropic 或 OpenAI 提供的工具。
+:::
+
+## 適用版本與本章使用的工具
+
+請固定使用下列版本跟做；本章從查詢版本與專案資訊開始，場景編輯留作選修練習：
+
+| 項目 | 狀態 |
+| --- | --- |
+| 版本 | godot-mcp 0.1.0，固定在 commit `e11cfc786f8b2491dcceddf85c72c7c9c79a9108` |
+| 建置 | `npm ci --ignore-scripts` 後 `npm run build`，產生 `build/index.js` |
+| 連線 | 透過 MCP SDK 的 stdio 連線完成初始化（initialize） |
+| 列出工具 | 在 `READ_ONLY_MODE=true` 下列出 8 個工具 |
+| 呼叫工具 | `get_godot_version` 回傳 `4.7.2.stable.official`；`get_project_info` 成功讀取一個範例專案的名稱與檔案統計 |
+| **未測** | 啟動編輯器、執行專案、擷取除錯輸出，以及所有建立或修改場景的工具 |
+
+本章的跟做重點是連線、列出工具、查版本與專案資訊。表中的其他功能需另在測試專案確認；不同環境的安裝與連線結果仍可能不同。
+
+## 學習目標
+
+1. 說明 MCP 是什麼，以及它和「agent 直接執行 shell 指令」的差別。
+2. 判斷什麼情況下值得加入 MCP，什麼情況下 CLI 就夠了。
+3. 固定在指定 commit 建置伺服器，且安裝時不執行套件的安裝腳本。
+4. 理解 `READ_ONLY_MODE` 實際限制了什麼、**沒有**限制什麼。
+5. 分別用 Claude Code 與 Codex CLI 各自的方式加入伺服器，並知道如何移除。
+
+## 核心概念
+
+### MCP：給 agent 的標準化「工具插座」
+
+Model Context Protocol 是一個開放協定。一個「MCP 伺服器」是你電腦上的一支程式，它向 agent 宣告「我提供這些工具」，agent 在需要時呼叫，伺服器執行後回傳結果。本章的伺服器透過標準輸入輸出（stdio）和 agent 溝通，由 agent 在背景啟動。
+
+<LessonDiagram kind="workflow" />
+
+| 面向 | 直接用 CLI（本課程主線） | 透過 MCP 伺服器 |
+| --- | --- | --- |
+| 設定 | 不需額外設定 | 需要建置與設定伺服器 |
+| 透明度 | 每個指令你都看得到 | 要讀伺服器原始碼才知道工具實際做了什麼 |
+| 能力 | Godot CLI 參數與日誌 | 結構化結果，例如專案資訊 |
+| 風險 | 由 agent 的權限設定控制 | 另外多了一支第三方程式在你的電腦上執行 |
+
+MCP 不會讓 agent 突然「看得見遊戲」。agent 能否取得畫面，取決於伺服器有沒有截圖類工具、你的 agent 是否支援讀取圖片，以及你給的權限。即使能截圖，靜態圖片也無法替代你實際操作的手感判斷。
+
+### 唯讀模式到底限制了什麼
+
+godot-mcp 用環境變數 **`READ_ONLY_MODE=true`** 啟用唯讀模式（注意：名稱是 `READ_ONLY_MODE`，若只寫 `READ_ONLY` 不會生效）。從原始碼 `src/config/config.ts` 與 `src/tools/ToolRegistry.ts` 可以看到它的實際行為：
+
+| 唯讀模式下**仍列出**的工具 | 唯讀模式下**隱藏**的工具 |
+| --- | --- |
+| `get_godot_version`、`list_projects`、`get_project_info`、`get_uid`、`get_debug_output` | `create_scene`、`add_node`、`edit_node`、`remove_node`、`save_scene` |
+| `launch_editor`、`run_project`、`stop_project` | `load_sprite`、`export_mesh_library`、`update_project_uids` |
+
+請特別注意三件事：
+
+1. **唯讀不等於不會啟動程式**。`launch_editor` 與 `run_project` 在唯讀模式下仍然存在，它們會在你的電腦上啟動 Godot 程序。
+2. **唯讀只過濾「工具清單」**。在 0.1.0 的原始碼中，伺服器處理工具呼叫時只檢查工具是否已註冊，並沒有再檢查唯讀設定。也就是說，被隱藏的寫入工具只是不會出現在清單裡；若有用戶端直接以名稱呼叫，伺服器端並沒有另外阻擋。（這是閱讀原始碼得到的結論，課程沒有實際嘗試這種呼叫。）
+3. **唯讀不是作業系統沙箱**。伺服器以你的使用者身分執行，能存取你能存取的檔案。真正的保護來自 agent 的權限確認、Git 備份，以及只在測試專案中試用。
+
+## 動手操作
+
+以下命令中的 `/absolute/path/...` 請換成你電腦上的**絕對路徑**。
+
+### 步驟 1：固定版本取得原始碼並審查
+
+```bash
+mkdir -p ~/mcp-servers
+cd ~/mcp-servers
+git clone https://github.com/bradypp/godot-mcp.git
+cd godot-mcp
+git checkout e11cfc786f8b2491dcceddf85c72c7c9c79a9108
+```
+
+固定在本課程測試過的 commit，可以確保你讀到、建置到的程式和課程描述一致。之後若要升級，請重新審查。建置前先閱讀：
+
+- `README`：功能說明與建置方式。
+- `package.json` 的 `scripts`：了解建置會執行哪些步驟。
+- `src/config/config.ts` 與 `src/tools/ToolRegistry.ts`：確認環境變數名稱與工具清單，對照上一節的表格。
+
+### 步驟 2：建置
+
+```bash
+npm ci --ignore-scripts
+npm run build
+ls build/index.js
+```
+
+- `npm ci`：依照 `package-lock.json` 安裝精確版本的相依套件。
+- `--ignore-scripts`：不執行任何套件的安裝期腳本，降低安裝時自動執行未知程式的風險。
+- `npm run build`：執行專案自己的建置腳本，產生 `build/index.js`。
+
+### 步驟 3：在 Claude Code 中以專案範圍加入
+
+在你的**測試用** Godot 專案資料夾中執行：
+
+```bash
+cd ~/godot-projects/mcp-sandbox
+claude mcp add --transport stdio --scope project godot \
+  --env GODOT_PATH=/absolute/path/godot \
+  --env READ_ONLY_MODE=true \
+  -- node /absolute/path/godot-mcp/build/index.js
+```
+
+- `--scope project`：設定寫入專案根目錄的 `.mcp.json`，只在這個專案中生效。第一次使用專案範圍的伺服器時，Claude Code 會請你確認是否信任。
+- `--env`：可以重複多次，每次設定一個環境變數。`GODOT_PATH` 指向 Godot 4.7.2 執行檔（例如第 1 章建立的 `~/opt/godot/Godot_v4.7.2-stable_linux.x86_64`，要寫成展開後的絕對路徑）。
+- `--` 之後是啟動伺服器的完整命令。
+
+啟動 `claude` 後輸入 `/mcp`，可以查看伺服器狀態與它提供的工具。`.mcp.json` 中包含你電腦特有的絕對路徑，提交到 Git 前請考慮其他人是否適用。
+
+### 步驟 4：在 Codex CLI 中加入
+
+```bash
+codex mcp add godot \
+  --env GODOT_PATH=/absolute/path/godot \
+  --env READ_ONLY_MODE=true \
+  -- node /absolute/path/godot-mcp/build/index.js
+```
+
+這個命令會修改**使用者層級**的 Codex 設定，也就是所有專案都會載入這個伺服器。若你只想在某個專案中使用，可以改為在該專案的 `.codex/config.toml` 中撰寫設定：
+
+```toml
+[mcp_servers.godot]
+command = "node"
+args = ["/absolute/path/godot-mcp/build/index.js"]
+
+[mcp_servers.godot.env]
+GODOT_PATH = "/absolute/path/godot"
+READ_ONLY_MODE = "true"
+```
+
+專案層級的 `.codex/config.toml` 只有在 Codex **信任該專案**時才會被載入；第一次在專案中啟動 Codex 時，請依畫面提示決定是否信任。兩種方式擇一即可，不要同時設定，以免難以判斷實際載入的是哪一份。
+
+### 步驟 5：權限保持「逐次確認」
+
+試用期間請**不要**：
+
+- 使用略過所有權限確認的啟動旗標，或把 agent 切到完全不受限的沙箱模式。
+- 在全域設定中對這個伺服器的所有工具設定自動允許。
+
+在工具內用 `/help` 找到目前版本的權限設定介面，維持每次呼叫都詢問。特別是 `launch_editor` 與 `run_project`，每次被呼叫時都要知道它將啟動什麼。
+
+### 步驟 6：第一次使用：查版本與專案資訊
+
+這兩個是本課程實際測過的工具，最適合當第一次試用。見下方「交給 agent 的提示詞」。
+
+### 步驟 7：設計比較實驗（選做）
+
+用同一個任務比較兩種方式，例如：「回報這個專案的 Godot 版本、場景與腳本數量」。
+
+| 記錄項目 | 只用 CLI 與檔案讀取 | 使用 MCP 工具 |
+| --- | --- | --- |
+| agent 呼叫了哪些指令或工具 | | |
+| 結果是否正確 | | |
+| 需要你確認幾次權限 | | |
+| 有沒有出現你不理解的操作 | | |
+
+若 MCP 沒有明顯幫助，就移除它。工具越少，越容易理解 agent 在做什麼。
+
+### 步驟 8：移除
+
+```bash
+# Claude Code（在加入時的專案資料夾中）
+claude mcp remove godot --scope project
+# Codex（使用者層級）
+codex mcp remove godot
+```
+
+若用的是 Codex 專案層級設定，刪除 `.codex/config.toml` 中 `[mcp_servers.godot]` 相關區塊即可。最後可刪除 `~/mcp-servers/godot-mcp`，並用 `git status` 確認專案中沒有殘留的設定變更。移除指令的細節請以 `claude mcp --help`、`codex mcp --help` 為準。
+
+## 程式碼解說：MCP 不取代你的驗證流程
+
+即使加入 MCP，第 6 章的循環不變：拆小任務、要計畫；有限修改、看 `git diff`；驗證「能解析 → 能執行 → 畫面與手感」。godot-mcp 的 `get_project_info` 這類工具能讓 agent 更方便地取得結構化資訊，但第三層「畫面與手感正確」仍然需要你本人確認。
+
+## 交給 agent 的提示詞
+
+<AgentTask
+  title="用 MCP 查詢 Godot 版本與專案資訊"
+  prompt={`這個專案已設定名為 godot 的 MCP 伺服器（godot-mcp，READ_ONLY_MODE=true）。請只使用以下兩個工具，不要呼叫其他 MCP 工具，也不要執行 shell 指令或修改任何檔案。
+1. 列出 godot 伺服器目前提供的工具名稱。
+2. 呼叫 get_godot_version，回報版本字串，並確認是否為 4.7.2.stable。
+3. 呼叫 get_project_info，專案路徑使用目前專案資料夾的絕對路徑，回報專案名稱與場景、腳本數量。
+4. 特別指出：工具清單中是否包含 launch_editor 或 run_project。若有，提醒我它們在唯讀模式下仍會啟動 Godot 程序，本次沒有使用。
+最後用兩三句話說明這些資訊和直接讀 project.godot 相比有什麼差別。`}
+/>
+
+<AgentTask
+  title="審查 MCP 伺服器原始碼（唯讀）"
+  prompt={`我正在評估一個社群的 Godot MCP 伺服器，原始碼在 ~/mcp-servers/godot-mcp。請只讀取，不要安裝、建置或執行任何東西。
+1. 執行 git log -1 並回報目前的 commit。
+2. 閱讀 src/config/config.ts，列出伺服器讀取的所有環境變數與用途。
+3. 閱讀 src/tools/ToolRegistry.ts 與處理工具呼叫的伺服器程式，說明 READ_ONLY_MODE 影響的是工具清單、工具呼叫，還是兩者。
+4. 找出所有會啟動外部程序（例如 spawn、exec）或寫入檔案的工具。
+5. 以低、中、高評估風險，並建議最小權限的試用方式。
+請明確區分「從原始碼確認的事實」與「根據 README 推測的內容」。`}
+/>
+
+## 自我檢查
+
+- [ ] 我能用一句話說明 MCP 伺服器是什麼，以及本課程主線為什麼不需要它。
+- [ ] 我的 godot-mcp 固定在指定 commit，並以 `npm ci --ignore-scripts` 安裝。
+- [ ] 我設定的是 `READ_ONLY_MODE=true`，而不是 `READ_ONLY`。
+- [ ] 我知道唯讀模式下 `launch_editor`、`run_project` 仍然可用，且唯讀不是作業系統沙箱。
+- [ ] 設定是專案範圍，或試用後會移除；沒有全域自動核准。
+
+## 練習
+
+1. 完成步驟 7 的比較實驗，寫下你是否決定保留 MCP 以及理由。
+2. 在 `AGENTS.md` 或 `CLAUDE.md` 中加入一條規則，例如「MCP 只可使用 get_godot_version 與 get_project_info，其他工具需先詢問」，觀察 agent 是否遵守。
+3. 不使用任何 MCP，寫一個 shell 腳本完成「讀出 project.godot 中的專案名稱，並統計 .tscn 與 .gd 檔數量」，和 `get_project_info` 的結果比較。
+
+## 常見錯誤與限制
+
+- **伺服器沒有出現在 `/mcp` 清單**：`build/index.js` 路徑錯誤、沒有先建置，或 Node.js 版本不符。可以在終端機直接執行 `node /absolute/path/godot-mcp/build/index.js` 看是否有錯誤訊息（它會等待輸入，按 `Ctrl+C` 結束）。
+- **工具呼叫說找不到 Godot**：`GODOT_PATH` 沒有設定、不是絕對路徑，或指向的檔案沒有執行權限。
+- **唯讀模式沒生效、寫入工具仍出現在清單中**：環境變數名稱寫成 `READ_ONLY`，或值不是小寫的 `true`。
+- **以為唯讀就安全**：唯讀只隱藏場景寫入工具，仍可啟動 Godot 程序，也不限制檔案系統存取。只在測試專案中試用，並保持 Git 乾淨。
+- **在 WSL 中路徑混亂**：伺服器、Godot、專案都放在 WSL 的 Linux 檔案系統中，不要混用 Windows 路徑。
+- **社群專案的變動**：上游可能更新或停止維護。升級到新 commit 前，重新做一次原始碼審查。
+- **費用**：MCP 伺服器在本機執行，本身不需要付費，也不需要任何 API 金鑰；agent 仍使用你既有的訂閱。
+
+## 官方參考
+
+- Model Context Protocol：https://modelcontextprotocol.io
+- Claude Code 文件（從概覽頁進入 MCP 說明）：https://code.claude.com/docs/en/overview
+- Codex 官方文件（MCP 與設定檔說明）：https://developers.openai.com/codex
+- 社群專案 godot-mcp：https://github.com/bradypp/godot-mcp
+- Godot 4.7 官方文件：https://docs.godotengine.org/en/4.7/
