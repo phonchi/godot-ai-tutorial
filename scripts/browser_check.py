@@ -39,7 +39,9 @@ with sync_playwright() as p:
  page.goto(BASE+'lessons/04-signals/',wait_until='networkidle');page.locator('.progress-button').click()
  page.goto(BASE+'lessons/07-2d-movement/',wait_until='networkidle');result['unlock_badge']=page.locator('.unlock-badge').count()==1
  # Built static search must resolve a Traditional Chinese term.
- page.locator('button[data-open-modal]').first.click();page.locator('.pagefind-ui__search-input').fill('訊號');page.wait_for_timeout(1000)
+ page.locator('button[data-open-modal]').first.click();page.locator('.pagefind-ui__search-input').fill('訊號')
+ try: page.wait_for_selector('.pagefind-ui__result',timeout=10000)
+ except Exception: pass
  result['search_results']=page.locator('.pagefind-ui__result').count()
  page.keyboard.press('Escape')
  page.set_viewport_size({'width':390,'height':844})
