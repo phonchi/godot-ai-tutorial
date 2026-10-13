@@ -1,17 +1,83 @@
 ---
+import {unlocks,glyphSvg} from '../data/unlocks';
 const base=import.meta.env.BASE_URL.replace(/\/?$/, '/');
-const modules=[['01—06','先讀懂 Godot，再學會與 agent 合作','節點、場景、GDScript、訊號、Git 與任務描述。','01-environment'],['07—13','做一款 2D 收集閃避遊戲','角色移動、碰撞、生成、介面、音效與網頁匯出。','07-2d-movement'],['14—17','走進你的第一個 3D 世界','空間座標、角色、攝影機、材質與探索。','14-3d-world'],['18','選修：透過 MCP 連接工具','從直接改檔走向工具呼叫，理解能力與限制。','18-mcp']];
+const lessons=['01-environment','02-editor','03-gdscript','04-signals','05-project-rules','06-agent-workflow','07-2d-movement','08-2d-collection','09-2d-hazards','10-ui-state','11-audio-polish','12-debugging','13-web-export','14-3d-world','15-3d-controller','16-3d-collection','17-3d-export','18-mcp'];
+const worlds=[
+ {no:'W1',range:[0,6],title:'先讀懂 Godot，再與 agent 合作',desc:'節點、場景、GDScript、訊號、專案規則與任務描述。'},
+ {no:'W2',range:[6,13],title:'星星花園：2D 收集閃避',desc:'衝刺、追蹤敵人、三個波次、shader 與網頁匯出。'},
+ {no:'W3',range:[13,17],title:'浮空島：3D 平台探索',desc:'天空與霧、鏡頭相對移動、移動平台、巡邏敵人與重生點。'},
+ {no:'W4',range:[17,18],title:'選修：透過 MCP 連接工具',desc:'從直接改檔走向工具呼叫，理解能力與限制。'},
+];
+const previews=[
+ {id:'2d',label:'2D · 星星花園',caption:'實際執行的 2D 完成品：衝刺穿過追蹤敵人，三個波次收集 10 顆星星。'},
+ {id:'3d',label:'3D · 浮空島',caption:'實際執行的 3D 完成品：跳過浮島與移動平台，收集 5 顆寶珠打開拱門。'},
+];
 ---
 <section class="hero-course">
- <div><div class="course-kicker">GODOT · GDSCRIPT · AI AGENTS</div>
- <h1>把遊戲想法，<br/>一步步做成<br/><span>能玩的作品。</span></h1>
- <p>學懂 Godot 的核心概念，與 Claude Code 或 Codex 一起實作。每次修改都回到遊戲中驗證，從 2D 收集閃避走到 3D 探索。</p>
- <div class="hero-actions"><a class="course-link primary" href={`${base}lessons/01-environment/`}>從第一章開始 →</a><a class="course-link" href={`${base}play/`}>先玩完成品</a></div>
- <p style="font-size:.8rem;margin-top:1.2rem">18 章循序教學 · Linux／WSL 主線 · 可下載階段專案</p></div>
- <figure class="hero-preview"><img src={`${base}previews/2d.png`} alt="2D 收集閃避範例的實際遊戲畫面" fetchpriority="high"/><figcaption>從移動一個角色開始，加入收集、障礙與勝負規則。</figcaption></figure>
+ <div>
+  <div class="course-kicker">GODOT 4.7 · GDSCRIPT · AI AGENTS</div>
+  <h1>把遊戲想法，<br/>一步步做成<br/><span>能玩的作品。</span></h1>
+  <p class="lead">學懂 Godot 的核心概念，與 Claude Code 或 Codex 一起實作。每次修改都回到遊戲中驗證，從 2D 星星花園走到 3D 浮空島。</p>
+  <div class="hero-actions"><a class="course-link primary" href={`${base}lessons/01-environment/`}>從第一章開始 →</a><a class="course-link" href={`${base}play/`}>先玩完成品</a></div>
+  <p class="hero-meta">18 章循序教學 · 9 個可下載的階段專案 · 鍵盤與手把皆可遊玩</p>
+ </div>
+ <figure class="game-window" aria-label="遊戲完成品預覽">
+  <div class="game-window__bar">
+   <span class="game-window__dot"></span><span class="game-window__dot"></span><span class="game-window__dot"></span>
+   <div class="game-window__tabs" role="group" aria-label="切換預覽">
+    {previews.map((preview,index)=><button type="button" data-preview={preview.id} aria-pressed={index===0?'true':'false'}>{preview.label}</button>)}
+   </div>
+  </div>
+  <div class="game-window__screen">
+   {previews.map((preview,index)=><picture data-preview-panel={preview.id} hidden={index!==0}>
+    <source media="(prefers-reduced-motion: reduce)" srcset={`${base}previews/${preview.id}.png`} />
+    <source media="(max-width: 40rem)" srcset={`${base}previews/${preview.id}.png`} />
+    <img src={`${base}previews/${preview.id}.webp`} alt={`${preview.label} 的實際遊戲畫面`} width="720" height="450" loading={index===0?'eager':'lazy'} fetchpriority={index===0?'high':'auto'} />
+   </picture>)}
+  </div>
+  <figcaption data-preview-caption>{previews[0].caption}</figcaption>
+ </figure>
 </section>
-<section><h2>一條可以走完的學習路線</h2><p>會基礎程式即可開始。依序跟做，也能從下載區接續任一階段。</p>
- <ol class="module-list">{modules.map(([n,title,desc,slug])=><li><span class="module-no">{n}</span><div><b>{title}</b><small>{desc}</small></div><a href={`${base}lessons/${slug}/`}>進入章節 →</a></li>)}</ol>
+
+<section class="unlock-section">
+ <h2>你會親手做出的機制</h2>
+ <p>每一章完成一個看得見、玩得到的改變。點進去就能從那一章開始。</p>
+ <ul class="unlock-grid">{unlocks.map(item=><li><a class="unlock-tile" href={`${base}lessons/${item.slug}/`}><span class="glyph" set:html={glyphSvg(item.glyph)}></span><b>{item.name}</b><small>第 {item.chapter} 章 · {item.detail}</small></a></li>)}</ul>
 </section>
+
+<section>
+ <h2>一條可以走完的學習路線</h2>
+ <p>會基礎程式即可開始。依序跟做，也能從下載區接續任一階段。圓點代表章節，標記完成後會亮起。</p>
+ <ol class="world-map">{worlds.map(world=><li>
+  <div class="world">
+   <a class="world__badge" href={`${base}lessons/${lessons[world.range[0]]}/`} aria-label={`前往 ${world.title}`}>{world.no}</a>
+   <b>{world.title}</b><small>{world.desc}</small>
+   <span class="world__dots">{lessons.slice(world.range[0],world.range[1]).map(slug=><a href={`${base}lessons/${slug}/`} data-lesson={slug} aria-label={`第 ${slug.slice(0,2)} 章`}>{slug.slice(0,2)}</a>)}</span>
+  </div>
+ </li>)}</ol>
+ <div class="map-progress"><span class="map-progress__bar"><span></span></span><span data-progress-text>進度只儲存在這個瀏覽器。</span></div>
+</section>
+
 <div class="course-grid"><section class="course-panel"><span class="course-kicker">先理解，再實作</span><h3>你決定玩法，AI 協助完成。</h3><p>每章都有可複製的任務卡、程式說明與檢查點。你會學會讀差異、描述錯誤、回復修改，並判斷結果是否符合原本的遊戲規則。</p><a href={`${base}prompts/`}>打開提示詞工具箱 →</a></section>
 <section class="course-panel"><span class="course-kicker">卡住也能繼續</span><h3>每個階段，都有對照專案。</h3><p>下載專案即可在 Godot 開啟，對照自己的場景與程式。不使用 agent，也能循著操作步驟與練習完成遊戲。</p><a href={`${base}downloads/`}>下載範例專案 →</a></section></div>
+
+<script>
+ const tabs=Array.from(document.querySelectorAll<HTMLButtonElement>('[data-preview]'));
+ const caption=document.querySelector('[data-preview-caption]');
+ const captions:Record<string,string>={'2d':'實際執行的 2D 完成品：衝刺穿過追蹤敵人，三個波次收集 10 顆星星。','3d':'實際執行的 3D 完成品：跳過浮島與移動平台，收集 5 顆寶珠打開拱門。'};
+ tabs.forEach(tab=>tab.addEventListener('click',()=>{
+  const id=tab.dataset.preview!;
+  tabs.forEach(other=>other.setAttribute('aria-pressed',String(other===tab)));
+  document.querySelectorAll<HTMLElement>('[data-preview-panel]').forEach(panel=>panel.hidden=panel.dataset.previewPanel!==id);
+  if(caption)caption.textContent=captions[id];
+ }));
+ let done:string[]=[];
+ try{const stored=JSON.parse(localStorage.getItem('godot-ai-course-progress-v1')||'[]');if(Array.isArray(stored))done=stored}catch{}
+ const dots=Array.from(document.querySelectorAll<HTMLAnchorElement>('[data-lesson]'));
+ let count=0;
+ dots.forEach(dot=>{if(done.some(path=>path.includes(`/lessons/${dot.dataset.lesson}`))){dot.classList.add('done');count++;}});
+ const bar=document.querySelector<HTMLElement>('.map-progress__bar span');
+ if(bar)bar.style.width=`${count/18*100}%`;
+ const text=document.querySelector('[data-progress-text]');
+ if(text&&count>0)text.textContent=`已完成 ${count} / 18 章 · 只儲存在這個瀏覽器`;
+</script>

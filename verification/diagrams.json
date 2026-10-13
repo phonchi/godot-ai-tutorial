@@ -23,5 +23,20 @@
     "kind": "coordinates",
     "exit_code": 0,
     "output": "OK /home/phonchi/godot/.tools/diagram-check/coordinates.html\n"
+  },
+  {
+    "kind": "dash",
+    "exit_code": 0,
+    "output": "OK /home/phonchi/godot/.tools/diagram-check/dash.html\n"
+  },
+  {
+    "kind": "waves",
+    "exit_code": 0,
+    "output": "OK /home/phonchi/godot/.tools/diagram-check/waves.html\n"
+  },
+  {
+    "kind": "respawn",
+    "exit_code": 0,
+    "output": "OK /home/phonchi/godot/.tools/diagram-check/respawn.html\n"
   }
 ]

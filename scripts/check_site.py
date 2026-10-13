@@ -36,6 +36,7 @@ for path in sorted((ROOT/'public/downloads').glob('*.zip')):
   for suffix in ['project.godot','main.tscn','scripts/main.gd','scripts/player.gd','AGENTS.md','CLAUDE.md','LICENSE']:
    assert any(name.endswith('/'+suffix) for name in names),(path,suffix)
   archives.append({'name':path.name,'files':len(names),'bytes':path.stat().st_size})
-assert len(archives)==8
+expected={f'{d}-{s}.zip' for d,stages in {'2d':['01-movement','02-collect','03-hazards','04-interface','05-final'],'3d':['01-world','02-controller','03-platforms','04-final']}.items() for s in stages}
+assert {a['name'] for a in archives}==expected,sorted({a['name'] for a in archives}^expected)
 report={'html_pages':len(pages),'internal_links_checked':count,'errors':errors,'archives':archives}
 (ROOT/'verification/site-check.json').write_text(json.dumps(report,ensure_ascii=False,indent=2));print(json.dumps(report,ensure_ascii=False,indent=2));assert not errors

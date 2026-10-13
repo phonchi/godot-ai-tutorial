@@ -1,6 +1,21 @@
 ---
 interface Props {dimension:'2d'|'3d'}
 const {dimension}=Astro.props;const base=import.meta.env.BASE_URL.replace(/\/?$/, '/');
-const stages=dimension==='2d'?[['01-movement','01 · 角色移動','輸入映射、方向與速度'],['02-collect','02 · 收集物件','Area2D 與計分'],['03-hazards','03 · 障礙與受傷','生成、碰撞與生命值'],['04-interface','04 · 介面與狀態','HUD、勝負與重開'],['05-final','05 · 完成品','音效與完整遊戲循環']]:[['01-world','01 · 3D 世界','地面、材質、光照'],['02-controller','02 · 角色控制','移動、跳躍與跟隨攝影機'],['03-final','03 · 完成品','收集、出口與重新開始']];
+const stages=dimension==='2d'?[
+ ['01-movement','角色移動與衝刺','加速、摩擦、dash 與冷卻；輸入對應含手把。','第 07 章'],
+ ['02-collect','收集星星','Area2D 訊號、Tween 彈出、一次性粒子；收滿 10 顆獲勝。','第 08 章'],
+ ['03-hazards','追蹤敵人與生命','direction_to 追蹤、反彈敵人、Timer 生成、3 條命與無敵時間。','第 09 章'],
+ ['04-interface','標題、波次與 HUD','enum 狀態機、3 個波次、繪製愛心與波次點的 HUD。','第 10 章'],
+ ['05-final','完成品','背景 shader、螢火蟲、殘影、畫面震動、音效與最佳紀錄。','第 11–13 章'],
+]:[
+ ['01-world','浮島世界','程序化天空、霧、glow、陰影與用基本形狀組成的浮島。','第 14 章'],
+ ['02-controller','角色與鏡頭','鏡頭相對移動、coyote time、跳躍緩衝、平滑跟隨鏡頭。','第 15 章'],
+ ['03-platforms','平台與拱門','移動平台、5 顆寶珠、收齊後以 Tween 打開拱門。','第 16 章'],
+ ['04-final','完成品','Path3D 巡邏敵人、旗子重生點、標題畫面、計時與音效。','第 17 章'],
+];
 ---
-<div style="overflow-x:auto"><table class="download-table"><thead><tr><th>階段</th><th>學習重點</th><th>專案</th></tr></thead><tbody>{stages.map(([slug,title,desc])=><tr><td>{title}</td><td>{desc}</td><td><a href={`${base}downloads/${dimension}-${slug}.zip`} download>下載 ZIP ↓</a></td></tr>)}</tbody></table></div>
+<ol class="stage-timeline">{stages.map(([slug,title,desc,chapter],index)=><li class={index===stages.length-1?'final':undefined}>
+ <span class="stage-step">{String(index+1).padStart(2,'0')}</span>
+ <img class="stage-thumb" src={`${base}previews/stages/${dimension}-${slug}.webp`} alt={`${title}階段的實際執行畫面`} width="480" height="300" loading="lazy" />
+ <div class="stage-body"><b>{title}</b><small>{desc}　{chapter}</small><a href={`${base}downloads/${dimension}-${slug}.zip`} download>下載 {dimension}-{slug}.zip ↓</a></div>
+</li>)}</ol>

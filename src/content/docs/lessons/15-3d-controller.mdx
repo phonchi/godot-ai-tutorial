@@ -1,6 +1,6 @@
 ---
-title: "15｜3D 遊戲（二）：角色控制器與固定跟隨攝影機"
-description: "用 CharacterBody3D 做出有重力、能跳躍、會轉向移動方向的第三人稱角色，並寫一個以固定偏移平滑跟隨玩家的攝影機。"
+title: "15｜3D 遊戲（二）：依攝影機方向移動、寬容的跳躍與平滑跟隨"
+description: "用 CharacterBody3D 做出依攝影機方向移動、有加速與減速的第三人稱角色，加入 coyote time 與 jump buffer 讓跳躍更寬容，用 Tween 做落地壓扁效果，並寫一個平滑跟隨且往前看的攝影機。"
 sidebar:
   order: 15
 ---
@@ -11,195 +11,216 @@ import SourceExcerpt from '../../../components/SourceExcerpt.astro';
 
 ## 學習目標
 
-1. 建立以 `CharacterBody3D` 為根節點的玩家場景，用膠囊形狀當外觀與碰撞。
-2. 寫出 3D 移動：WASD 或方向鍵在水平面移動、受重力影響、在地面時按空白鍵跳躍。
-3. 讓角色模型平滑轉向移動方向。
-4. 寫一個**固定偏移**跟隨玩家的攝影機：攝影機角度不隨滑鼠轉動，始終從玩家後上方看過去。
-5. 處理玩家掉出場地的情況，並保留 R 重新開始。
+本章讓浮空島上的探險者動起來：
 
-本章對應 3D 範例的「02 controller」階段，見 [下載頁](../../downloads/)。
+1. 用 `CharacterBody3D` 做出有重力、能跳躍的角色，水平速度用加速與減速逼近目標。
+2. 把輸入方向換算成**相對於攝影機**的方向，按「上」永遠是往畫面深處走。
+3. 用 **coyote time** 與 **jump buffer** 讓跳躍更寬容：剛走出邊緣、或落地前一瞬間按跳躍都算數。
+4. 用 `Tween` 讓角色在起跳與落地時壓扁、拉長，但不改變碰撞形狀。
+5. 寫一個平滑跟隨、稍微往前看的攝影機；掉出島嶼時回到起點。
+
+本章對應 3D 範例的「02 controller」階段。
 
 ## 核心概念
 
 ### 3D 角色的速度分成兩部分
 
-在 3D 平台遊戲中，`velocity` 可以拆成：
+`velocity` 是 `Vector3`，可以拆成兩部分處理：
 
-- **水平部分**（X 與 Z）：由玩家輸入決定。
-- **垂直部分**（Y）：由重力與跳躍決定。
-
-每個物理影格：在空中就讓 Y 速度被重力往下拉；在地面上按跳躍就給 Y 一個向上的速度。水平與垂直分開處理，邏輯就很清楚。
+- **水平（X、Z）**：由輸入決定。用 `move_toward()` 每格往目標速度靠近，按著方向鍵時用 `acceleration`，放開時用 `deceleration`。
+- **垂直（Y）**：由重力與跳躍決定。在空中每格減去 `gravity * delta`，起跳時直接設成 `jump_velocity`。
 
 <LessonDiagram kind="coordinates" />
 
+以預設值 `jump_velocity = 8`、`gravity = 22` 計算，最高可跳約 1.45 公尺，同高度可跳過約 4 公尺遠。關卡中島與島的高度差都在 0.8 公尺以內，就是依這個數字設計的。
+
+### 依攝影機方向移動
+
+輸入給的是平面上的 `Vector2`（例如按 W 得到 `(0, -1)`）。要變成 3D 世界中的方向，可以借用攝影機的方向：
+
+- 攝影機的「前方」是 `-camera.global_basis.z`，「右方」是 `camera.global_basis.x`。
+- 攝影機略微往下看，所以前方向量帶有一點 Y。把 **Y 設成 0 再正規化**，就得到貼著地面的前方與右方。
+- 最後方向 = 右方 × 輸入 X − 前方 × 輸入 Y。
+
+這樣即使之後讓攝影機旋轉，「按上就往畫面深處走」仍然成立。
+
+### 寬容的跳躍：coyote time 與 jump buffer
+
+| 名稱 | 情境 | 做法 |
+| --- | --- | --- |
+| coyote time | 剛走出平台邊緣才按跳 | 離地後 0.1 秒內仍允許起跳 |
+| jump buffer | 還沒落地就先按跳 | 記住這次按鍵 0.12 秒，落地時自動起跳 |
+
+兩者都只是一個會倒數的計時器，跳躍條件變成「`buffer_left > 0` 而且 `coyote_left > 0`」。起跳後立刻把兩個計時器歸零，避免空中連跳。
+
 ### 為什麼攝影機不當玩家的子節點
 
-如果把 `Camera3D` 直接放在玩家底下，玩家轉向時攝影機會跟著轉，畫面會猛烈旋轉。本課程的規格是「固定跟隨」：攝影機永遠保持在玩家後上方的固定偏移，只跟著位置移動，不跟著角色轉向。所以把攝影機放在主場景中，用腳本追蹤玩家位置。
-
-因為攝影機永遠從 +Z 方向往 -Z 方向看，按 W 讓角色往 -Z 走，在畫面上就是「往遠處走」，輸入方向與畫面方向自然一致。
+如果 `Camera3D` 是玩家的子節點，角色轉身時攝影機會跟著繞圈，畫面晃動。讓攝影機獨立存在，每個物理影格以固定偏移追上玩家，畫面穩定，也能做出平滑延遲。
 
 ## 動手操作
 
 ### 步驟 1：玩家場景
 
-1. 新增場景，根節點 `CharacterBody3D`，命名 `Player`，加入 `player` 群組。
-2. 加入 `CollisionShape3D`，`Shape` 選 `CapsuleShape3D`，半徑 `0.4`、高度 `1.8`，位置 `(0, 0.9, 0)`。
-3. 加入 `Node3D`，命名 `Visual`。在它底下：
-   - `MeshInstance3D`，`Mesh` 選 `CapsuleMesh`，半徑與高度同上，位置 `(0, 0.9, 0)`，材質選醒目的顏色。
-   - 另一個 `MeshInstance3D` 當「鼻子」，`BoxMesh` 大小 `(0.2, 0.2, 0.3)`，位置 `(0, 1.4, -0.45)`，讓你看得出角色面向哪裡（-Z 方向）。
+1. 新增場景，根節點 `CharacterBody3D`，命名 `Player`。
+2. 加入 `CollisionShape3D`，形狀選 `CapsuleShape3D`，半徑 `0.4`、高度 `1.4`。
+3. 加入一個 `Node3D`，命名 `Visual`，所有外觀都放在它底下：
+   - `MeshInstance3D`：`CapsuleMesh`，半徑 0.4、高度 1.4，奶油色材質。
+   - 一個薄薄的 `TorusMesh` 當圍巾、一個小 `BoxMesh` 當背包，薄荷綠色。
+   - 兩顆白色小 `SphereMesh` 當眼睛，放在 -Z 那一面（角色的「臉」朝 -Z）。
 4. 存成 `player.tscn`。
 
-`Visual` 這一層是重點：之後只旋轉 `Visual`，不旋轉整個物理體，碰撞與移動方向就不會被轉向影響。
+把外觀集中在 `Visual` 底下，之後轉身與壓扁都只改 `Visual`，碰撞膠囊保持不變。
 
 ### 步驟 2：移動、重力與跳躍
 
+對 `Player` 附加 `res://scripts/player.gd`：
+
 ```gdscript
-# 示範概念：第三人稱 3D 角色控制
+# 示範概念：依攝影機方向移動＋寬容跳躍
 extends CharacterBody3D
 
-@export var speed := 5.0
-@export var jump_velocity := 5.5
-@export var turn_speed := 10.0
+@export var speed := 6.0
+@export var acceleration := 30.0
+@export var deceleration := 40.0
+@export var jump_velocity := 8.0
+@export var gravity := 22.0
+@export var coyote_time := 0.10
+@export var jump_buffer := 0.12
 
-var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
-
-@onready var visual: Node3D = $Visual
+var camera: Camera3D
+var coyote_left := 0.0
+var buffer_left := 0.0
 
 func _physics_process(delta: float) -> void:
-	# 垂直：重力與跳躍
-	if not is_on_floor():
-		velocity.y -= gravity * delta
-	if Input.is_action_just_pressed("jump") and is_on_floor():
-		velocity.y = jump_velocity
-
-	# 水平：依輸入移動
-	var input_dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
-	var direction := Vector3(input_dir.x, 0.0, input_dir.y)
-	if direction != Vector3.ZERO:
-		velocity.x = direction.x * speed
-		velocity.z = direction.z * speed
-		var target_angle := atan2(-direction.x, -direction.z)
-		visual.rotation.y = lerp_angle(visual.rotation.y, target_angle, turn_speed * delta)
+	if is_on_floor():
+		coyote_left = coyote_time
 	else:
-		velocity.x = move_toward(velocity.x, 0.0, speed)
-		velocity.z = move_toward(velocity.z, 0.0, speed)
-
+		coyote_left -= delta
+		velocity.y -= gravity * delta
+	buffer_left -= delta
+	if Input.is_action_just_pressed("jump"):
+		buffer_left = jump_buffer
+	if buffer_left > 0.0 and coyote_left > 0.0:
+		velocity.y = jump_velocity
+		coyote_left = 0.0
+		buffer_left = 0.0
+	var input := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	var forward := -camera.global_basis.z
+	var right := camera.global_basis.x
+	forward.y = 0.0
+	right.y = 0.0
+	var direction := right.normalized() * input.x - forward.normalized() * input.y
+	var rate := acceleration if direction != Vector3.ZERO else deceleration
+	var flat := Vector2(velocity.x, velocity.z).move_toward(Vector2(direction.x, direction.z) * speed, rate * delta)
+	velocity.x = flat.x
+	velocity.z = flat.y
 	move_and_slide()
 ```
 
-### 步驟 3：放進主場景
+### 步驟 3：轉身與壓扁
 
-1. 打開第 14 章的 `main.tscn`，把 `player.tscn` 拖進來，位置設成 `PlayerSpawn` 標記的位置。
-2. 刪除或保留第 14 章的固定 `Camera3D`，下一步會為它加腳本。
-
-### 步驟 4：固定跟隨攝影機
-
-選取主場景中的 `Camera3D`，命名 `FollowCamera`，附加腳本：
+在同一個腳本加入：
 
 ```gdscript
-# 示範概念：固定偏移、平滑跟隨的攝影機
-extends Camera3D
+@onready var visual: Node3D = $Visual
 
-@export var target: Node3D
-@export var follow_offset := Vector3(0.0, 6.0, 8.0)
-@export var follow_speed := 6.0
-
-func _ready() -> void:
-	if target:
-		global_position = target.global_position + follow_offset
-
-func _physics_process(delta: float) -> void:
-	if target == null:
-		return
-	var desired := target.global_position + follow_offset
-	var weight := 1.0 - exp(-follow_speed * delta)
-	global_position = global_position.lerp(desired, weight)
-	look_at(target.global_position + Vector3(0.0, 1.0, 0.0), Vector3.UP)
+func squash(amount: Vector3) -> void:
+	visual.scale = amount
+	var tween := create_tween()
+	tween.tween_property(visual, "scale", Vector3.ONE, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 ```
 
-存檔後，在檢查器的 `Target` 欄位按「指派」選擇 `Player` 節點。執行遊戲，攝影機會在玩家後上方跟著移動。
+起跳時呼叫 `squash(Vector3(0.8, 1.25, 0.8))`（拉長）；用一個 `was_on_floor` 變數記住上一格是否在地上，「這格在地上、上一格不在」就是落地，呼叫 `squash(Vector3(1.25, 0.75, 1.25))`（壓扁）。移動時用 `lerp_angle()` 讓 `visual.rotation.y` 慢慢轉向 `atan2(-direction.x, -direction.z)`。
 
-### 步驟 5：掉出場地與重開
+### 步驟 4：放進主場景
 
-在主場景腳本中：
+開啟上一章的 `main.tscn`，把 `player.tscn` 拖進來，放在起點島上方，例如 `(0, 0.75, 9)`（膠囊高 1.4，中心比島頂高 0.7）。
+
+### 步驟 5：平滑跟隨攝影機
+
+把上一章的 `Camera3D` 留在 `Main` 底下，在 `main.gd` 中：
 
 ```gdscript
-# 示範概念：掉落重設與 R 重開（主場景）
-extends Node3D
+const CAMERA_OFFSET := Vector3(0, 3.6, 8.0)
+const LOOK_AHEAD := Vector3(0, 1.2, -4.0)
 
 @onready var player: CharacterBody3D = $Player
-@onready var spawn: Marker3D = $PlayerSpawn
+@onready var camera: Camera3D = $Camera3D
 
-func _physics_process(_delta: float) -> void:
-	if player.global_position.y < -10.0:
-		player.global_position = spawn.global_position
-		player.velocity = Vector3.ZERO
+func _ready() -> void:
+	player.camera = camera
 
-func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("restart"):
-		get_tree().reload_current_scene()
+func _physics_process(delta: float) -> void:
+	var weight := 1.0 - exp(-8.0 * delta)
+	camera.global_position = camera.global_position.lerp(player.global_position + CAMERA_OFFSET, weight)
+	camera.look_at(player.global_position + LOOK_AHEAD)
 ```
+
+`LOOK_AHEAD` 讓攝影機看向玩家**前方**一點，你會看到更多即將跳過去的路線。
+
+### 步驟 6：掉出島嶼就回到起點
+
+在 `main.gd` 的 `_physics_process` 加上：當 `player.global_position.y < -10`，把玩家放回起點、`velocity` 歸零，並把攝影機直接放到目標位置（不要讓它從深淵慢慢追上來）。
 
 ## 程式碼解說
 
-- `ProjectSettings.get_setting("physics/3d/default_gravity")`：讀取專案設定中的重力值（預設約 9.8），讓所有物體一致。較新的 4.x 版本也可以用 `get_gravity()` 取得考慮重力區域後的重力向量；使用前請確認你的版本有提供。
-- `is_on_floor()`：上一次 `move_and_slide()` 後是否站在地面上。它依賴 `up_direction`（預設向上）判斷什麼是地面。
-- `Input.is_action_just_pressed("jump")`：只在按下的那一影格為真，避免按住空白鍵時連續跳躍。
-- `Input.get_vector(..., "move_up", "move_down")`：把 W 對應成負 Y，因此轉成 3D 時 `input_dir.y` 直接當 Z 用，W 就是 -Z（往前）。
-- `atan2(-direction.x, -direction.z)`：算出讓「面向 -Z 的模型」轉向移動方向所需的 Y 軸角度。
-- `lerp_angle`：在兩個角度間插值，會選最短的旋轉方向，不會從 179 度繞一大圈轉到 -179 度。
-- `1.0 - exp(-follow_speed * delta)`：讓平滑跟隨的速度與影格率無關。直接寫 `lerp(a, b, 0.1)` 在高更新率螢幕上會跟得比較快。
-- `look_at(目標, Vector3.UP)`：讓攝影機的 -Z 方向對準目標。對準玩家上方 1 單位（大約胸口），構圖比對準腳底好。
-- `@export var target: Node3D`：Godot 4 可以直接匯出節點型別，在檢查器中指派，比寫死路徑更有彈性。
+- `move_toward(target, rate * delta)`：每格最多改變 `rate * delta`。加速 30 代表約 0.2 秒到達最高速；減速 40 讓放開時停得更俐落。
+- `1.0 - exp(-8.0 * delta)`：平滑跟隨的權重。直接用固定的 `lerp(…, 0.1)` 會讓 30 FPS 和 60 FPS 的追趕速度不同；用指數形式，不論影格率，約 0.29 秒都能追上 90%。
+- `look_at()` 的目標不能和攝影機位置重合，否則會出錯。偏移量 `(0, 3.6, 8)` 確保兩者永遠有距離。
+- coyote time 與 jump buffer 都不需要 `Timer` 節點，用 `float` 倒數就夠了，邏輯也全部集中在 `_physics_process`。
+- 壓扁只改 `Visual` 的 `scale`。如果直接縮放 `CharacterBody3D`，碰撞膠囊也會變形，可能讓角色卡進地板。
 
 ## 交給 agent 的提示詞
 
 <AgentTask
-  title="調整跳躍手感"
-  prompt={`這是 Godot 4.x GDScript 3D 專案，玩家是 CharacterBody3D，腳本 player.gd 已有重力、跳躍與移動。
-任務：改善跳躍手感，加入「土狼時間」（離開平台邊緣後 0.1 秒內仍可起跳）與「放開空白鍵時減少上升速度」（可控跳躍高度）。
+  title="調整跳躍手感並說明數字的意義"
+  prompt={`這是 Godot 4.7 的 3D 專案，玩家腳本在 scripts/player.gd（CharacterBody3D），有 speed、acceleration、deceleration、jump_velocity、gravity、coyote_time、jump_buffer 等 @export 變數。
+任務：讓跳躍「更輕盈」：最高點約 1.6 公尺、滯空時間略長，但同高度最遠距離不超過 4.8 公尺，以免跳過關卡設計。
 要求：
-1. 先閱讀 player.gd，說明計畫並等我同意。
-2. 只修改 player.gd；新增的時間與係數都用 @export 讓我能在檢查器調整。
-3. 不要改變現有的移動速度、轉向與輸入動作名稱。
-4. 修改後執行 godot --path . --headless --quit-after 120 2>&1 | tail -n 30。
-5. 列出我在遊戲中要測試的情境（例如從平台邊緣走出去後馬上按跳）。headless 無法驗證手感，請明確提醒。`}
+1. 先讀 player.gd，用公式（最高點 = v² ÷ 2g，滯空時間 = 2v ÷ g，水平距離 = 速度 × 滯空時間）算出建議數值，列出計算過程，等我同意。
+2. 只修改 player.gd 的 @export 預設值，不改程式邏輯。
+3. 修改後執行 godot --headless --path . --quit-after 120 2>&1 | tail -n 30。
+4. 列出我要在遊戲中實際測試的跳躍：起點島跳到第一座島、走出邊緣後才按跳、落地前先按跳。`}
 />
 
 ## 自我檢查
 
-- [ ] 按 W 角色往畫面遠處走，按 S 往鏡頭方向走，A、D 左右移動。
-- [ ] 角色「鼻子」平滑轉向移動方向。
-- [ ] 只有站在地面時按空白鍵才會跳，空中連按無效。
-- [ ] 能跳上第 14 章做的平台。
-- [ ] 攝影機平滑跟隨，不會跟著角色轉向而旋轉畫面。
-- [ ] 掉出場地後回到出生點；按 R 整局重開。
+- [ ] 按 W 時角色往畫面深處走，按 D 往畫面右邊走。
+- [ ] 放開方向鍵時角色會短暫減速，而不是瞬間停住。
+- [ ] 剛走出島嶼邊緣立刻按空白鍵，仍然跳得起來。
+- [ ] 落地前一瞬間按空白鍵，落地後會自動再跳。
+- [ ] 起跳與落地時角色會拉長、壓扁，碰撞形狀不變（開啟「顯示碰撞形狀」確認）。
+- [ ] 攝影機平滑跟隨，掉出島嶼後角色與攝影機立刻回到起點。
 
 ## 練習
 
-1. 把 `follow_offset` 改成 `(0, 10, 4)` 做出接近俯視的視角，再改成 `(0, 3, 6)` 做出低角度，比較哪種最適合你的場地。
-2. 讓攝影機只在 X 與 Z 方向平滑跟隨，Y 方向更慢，減少跳躍時的畫面晃動。
-3. 加入衝刺：按住 Shift 時速度變為 1.6 倍（需要新增輸入動作 `sprint`）。
+1. 把 `LOOK_AHEAD` 的 Z 改成 `-8`，再改成 `0`，比較哪一種更容易判斷跳躍距離。
+2. 加入 Q／E 讓攝影機繞玩家旋轉 90 度（旋轉 `CAMERA_OFFSET`），確認「依攝影機方向移動」仍然正確。
+3. 把 coyote time 設成 0，再試著從邊緣起跳，體會這 0.1 秒的差別。
 
 ## 常見錯誤與限制
 
-- **角色一直往下掉穿過地板**：地板沒有碰撞形狀，或玩家的碰撞形狀位置不對（整個膠囊在地下）。
-- **按跳沒反應**：`jump` 動作沒有綁定空白鍵，或 `is_on_floor()` 永遠是 false（例如碰撞形狀底部懸空）。開啟「顯示碰撞形狀」檢查。
-- **方向相反**：記得 3D 的前方是 -Z。若攝影機放在 -Z 那側看過來，輸入方向就會顛倒。
-- **攝影機抖動**：攝影機在 `_process`、玩家在 `_physics_process` 時，兩者更新頻率不同可能造成抖動。本章把兩者都放在物理影格；若仍有抖動，可研究專案設定中的物理插值（physics interpolation）選項，3D 物理插值是在 4.x 較新的版本才提供，請先確認版本。
-- **`Target` 沒有指派**：攝影機腳本會直接返回，畫面停在原地。
-- **角色卡在牆角或平台邊緣**：膠囊形狀通常比方塊好；也可以調整 `CharacterBody3D` 的 `Floor Max Angle` 與 `Safe Margin`。
+- **按上卻往下走**：忘了輸入的 Y 是「上為負」，方向要用 `- forward * input.y`。
+- **斜著看時移動速度變慢**：前方向量的 Y 沒有歸零就正規化，部分速度被分到垂直方向。
+- **空中可以一直跳**：起跳後沒有把 `coyote_left` 與 `buffer_left` 歸零。
+- **角色卡進地板或浮在空中**：縮放了整個 `CharacterBody3D`，或碰撞膠囊與外觀高度不一致。
+- **攝影機抖動**：攝影機在 `_process`、角色在 `_physics_process` 更新，兩者頻率不同。把跟隨放在 `_physics_process`。
+- **`look_at` 錯誤**：目標點與攝影機位置相同，或攝影機還沒加入場景樹就呼叫。
 
 ## 對照可下載的階段專案
 
-上面的操作讓你練習手動建立節點；下載版用程式建立同樣職責的物件，節點在執行後才出現在 Remote 場景樹。請以遊戲行為對照，並用以下原始碼認識另一種組合方式。
+上面的操作讓你練習手動建立節點；下載版用程式建立同樣職責的物件，節點在執行後才出現在 Remote 場景樹。對照時以遊戲行為為準，程式寫法可以不同。
 
-<SourceExcerpt dimension="3d" stage="02-controller" file="player" />
+<SourceExcerpt dimension="3d" stage="02-controller" file="player" method="camera_relative_direction" />
+
+<SourceExcerpt dimension="3d" stage="02-controller" file="player" method="update_jump_timers" />
+
+<SourceExcerpt dimension="3d" stage="02-controller" file="main" method="update_camera" />
 
 ## 官方參考
 
 - CharacterBody3D：https://docs.godotengine.org/en/4.7/classes/class_characterbody3d.html
-- 使用 CharacterBody2D/3D：https://docs.godotengine.org/en/4.7/tutorials/physics/using_character_body_2d.html
+- 使用 CharacterBody：https://docs.godotengine.org/en/4.7/tutorials/physics/using_character_body_2d.html
+- Tween：https://docs.godotengine.org/en/4.7/classes/class_tween.html
 - Camera3D：https://docs.godotengine.org/en/4.7/classes/class_camera3d.html
-- 官方入門「你的第一個 3D 遊戲」（移動與跳躍）：https://docs.godotengine.org/en/4.7/getting_started/first_3d_game/index.html
-- 物理插值：https://docs.godotengine.org/en/4.7/tutorials/physics/interpolation/index.html
+- 官方入門「你的第一個 3D 遊戲」：https://docs.godotengine.org/en/4.7/getting_started/first_3d_game/index.html

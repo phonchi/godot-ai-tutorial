@@ -1,23 +1,27 @@
 ---
 title: 遊戲試玩
-description: 試玩由 Godot 匯出的 2D 收集閃避與 3D 探索範例。
+description: 試玩由 Godot 匯出的 2D「星星花園」與 3D「浮空島」完成品。
 ---
 import PlayGame from '../../components/PlayGame.astro';
 
-先玩一次，再回到章節拆解它如何運作。這裡執行的是下載專案的 Godot Web 匯出版本。
+先玩一次，再回到章節拆解它如何運作。這裡執行的是下載專案中完成品的 Godot Web 匯出版本。為了節省記憶體，同一時間只會載入一款遊戲。
 
-## 2D：星光收集站
+## 2D：星星花園
 
-用 **WASD／方向鍵**移動，收集 **10 個物件**獲勝，碰到障礙三次便失敗。按 **R** 重新開始。點一下遊戲畫面取得鍵盤焦點。
+<div class="controls-legend"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>／方向鍵／左搖桿 移動</span><span><kbd>Shift</kbd>／<kbd>Space</kbd>／手把 B 衝刺</span><span><kbd>Enter</kbd>／手把 A 開始</span><span><kbd>R</kbd> 重新開始</span></div>
 
-<PlayGame game="2d" title="星光收集站：2D 收集閃避" />
+分三個波次收集 **10 顆星星**獲勝。追蹤敵人會朝你靠近，碰到敵人會失去一條命，三條命用完就失敗。衝刺的瞬間不會受傷，適合穿過敵人。
 
-## 3D：小島探索
+<PlayGame game="2d" title="星星花園：2D 收集閃避" />
 
-用 **WASD／方向鍵**移動，**空白鍵**跳躍。收集 **5 個物件**後走進出口獲勝，按 **R** 重新開始。攝影機會跟隨角色。
+## 3D：浮空島
 
-<PlayGame game="3d" title="小島探索：3D 收集探索" />
+<div class="controls-legend"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>／方向鍵／左搖桿 移動</span><span><kbd>Space</kbd>／手把 A 跳躍</span><span><kbd>Enter</kbd>／手把 Start 開始</span><span><kbd>R</kbd> 重新開始</span></div>
+
+在浮島與移動平台之間跳躍，收集 **5 顆寶珠**打開拱門，穿過拱門就獲勝。掉下去或碰到滾動的刺球，會回到最近碰過的旗子。
+
+<PlayGame game="3d" title="浮空島：3D 平台探索" />
 
 ## 如果無法載入
 
-使用支援 WebAssembly、WebGL 2 的桌機瀏覽器。網頁版第一次需要下載引擎，請等待載入完成。若裝置不支援，可到[下載區](../downloads/)取得專案，在 Godot 執行。音效需要在操作遊戲後才會播放。
+使用支援 WebAssembly 與 WebGL 2 的桌機瀏覽器。網頁版第一次需要下載引擎，請等待載入完成。手把需要先按任一按鈕，瀏覽器才會偵測到。最佳紀錄存在這個瀏覽器的網站資料中，清除網站資料後就會消失。若裝置不支援，可到[下載區](../downloads/)取得專案，在 Godot 執行。音效需要在操作遊戲後才會播放。

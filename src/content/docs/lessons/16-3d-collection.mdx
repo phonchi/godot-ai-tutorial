@@ -1,6 +1,6 @@
 ---
-title: "16｜3D 遊戲（三）：收集 5 個物件、開啟出口與獲勝"
-description: "用 Area3D 製作會旋轉漂浮的收集物，主場景計數；收滿 5 個前出口保持鎖定，收滿後出口變色開啟，玩家進入即獲勝。重用 2D 篇的狀態機與 HUD 思路。"
+title: "16｜3D 遊戲（三）：移動平台、收集寶珠與石拱門"
+description: "用 AnimatableBody3D 做出能載著玩家的移動平台，用 Area3D 製作會漂浮旋轉的發光寶珠；收滿 5 顆後，拱門上的燈全亮、門用 Tween 降下，玩家走進門內獲勝。"
 sidebar:
   order: 16
 ---
@@ -11,13 +11,13 @@ import SourceExcerpt from '../../../components/SourceExcerpt.astro';
 
 ## 學習目標
 
-1. 用 `Area3D` 製作收集物場景，加上旋轉與上下漂浮的動畫。
-2. 讓收集物發出訊號，主場景計數並更新 HUD。
-3. 建立一個有「鎖定／開啟」兩種狀態的出口：未收滿時進入會提示，收滿後才能獲勝。
-4. 把第 10 章的狀態機套用到 3D 遊戲：進行中、獲勝兩種主要狀態，按 R 重開。
-5. 體會 2D 與 3D 在遊戲邏輯層面幾乎相同，差別主要在節點型別與座標。
+1. 用 `AnimatableBody3D` 做出來回移動的平台，並理解為什麼站在上面的角色會被「載著走」。
+2. 用 `Area3D` 製作發光寶珠：上下漂浮、自轉，被收集時放大淡出。
+3. 建立石拱門：拱門上 5 盞燈對應 5 顆寶珠，收滿後門用 `Tween` 降下。
+4. 把「勝利」放在門**後方**的偵測區，玩家必須真的穿過拱門才算過關。
+5. 掉下島嶼時回到起點，並體會 2D 與 3D 的遊戲邏輯幾乎相同。
 
-完成後即為 3D 遊戲的最終版本，可與 3D 範例「03 final」階段對照，見 [下載頁](../../downloads/)，或到 [試玩頁](../../play/) 遊玩。
+本章對應 3D 範例的「03 platforms」階段，見 [下載頁](../../downloads/)。
 
 ## 核心概念
 
@@ -27,208 +27,179 @@ import SourceExcerpt from '../../../components/SourceExcerpt.astro';
 | --- | --- | --- |
 | `Area2D` | `Area3D` | 偵測進入，不阻擋 |
 | `CharacterBody2D` | `CharacterBody3D` | 玩家角色 |
-| `StaticBody2D` | `StaticBody3D` | 牆、地板 |
-| `Vector2` | `Vector3` | 位置、方向 |
-| `CanvasLayer` | `CanvasLayer` | HUD（3D 遊戲的 UI 仍是 2D） |
+| `StaticBody2D` | `StaticBody3D` | 不會動的島嶼、拱門 |
+| `AnimatableBody2D` | `AnimatableBody3D` | 由程式或動畫移動、會推動角色的物體 |
+| `CPUParticles2D` | `CPUParticles3D` | 收集時的粒子爆散 |
 
-訊號、群組、狀態機、`queue_free()`、`reload_current_scene()` 的用法完全相同。如果你完成了 2D 篇，這一章大多是在「換節點」。
+收集、計數、勝負判斷的程式幾乎可以從 2D 篇照搬，差別只在型別與 `Vector3`。
 
-### 出口的兩種狀態
+### 移動平台為什麼要用 AnimatableBody3D
 
-出口本身也是一個小狀態機：
+如果用 `StaticBody3D` 然後每格改它的 `position`，平台會「瞬移」，站在上面的角色不會跟著走，甚至會穿過去。`AnimatableBody3D` 是專門給「由你移動、但要能推動別人」的物體：
 
-<LessonDiagram kind="state" />
+- 預設的 `Sync to Physics` 為開啟，物理引擎會把每次移動當成有速度的運動。
+- 在 `_physics_process` 中移動平台，站在上面的 `CharacterBody3D` 呼叫 `move_and_slide()` 時，會自動加上平台的移動，**不需要**自己把平台位移加到玩家身上。
 
-- **鎖定**：紅色。玩家進入時，HUD 顯示「還需要收集 N 個」。
-- **開啟**：綠色。玩家進入時，主場景切換到獲勝狀態。
+平台用 `0.5 - 0.5 * cos(phase * TAU)` 來回移動：在兩端會減速、停頓一下再回頭，玩家比較好掌握起跳時機。
 
-出口只需要知道「我現在開了沒」，至於「收集幾個才開」由主場景決定，這和星星不管計分是同樣的原則。
+### 鎖定的拱門
+
+
+拱門有兩種狀態：鎖定時門板擋住入口，開啟後門板沉入地面。程式只需要一個 `gate_open` 布林值，再加上兩個規則：
+
+- 收集到第 5 顆寶珠時呼叫 `open_gate()`。
+- 門後的偵測區被進入時呼叫 `try_exit()`；寶珠不足就回傳 `false`。
+
+門板本身有碰撞，所以鎖定時玩家根本進不了門後；`try_exit()` 再檢查一次分數，是為了讓規則在測試中也成立。
 
 ## 動手操作
 
-### 步驟 1：收集物場景
+### 步驟 1：移動平台
 
-1. 新增場景，根節點 `Area3D`，命名 `Orb`，加入 `orbs` 群組。
-2. 加入 `CollisionShape3D`，形狀 `SphereShape3D`，半徑 `0.5`。
-3. 加入 `MeshInstance3D`，命名 `Mesh`，`Mesh` 選 `SphereMesh`（半徑 `0.35`、高度 `0.7`）或 `TorusMesh`，材質用亮黃色，可勾選 `Emission` 讓它發光感更明顯。
-4. 附加腳本，存成 `orb.tscn`：
+1. 在 `Main` 底下加入 `AnimatableBody3D`，命名 `Platform1`，位置放在兩座島之間的空隙，高度和島頂相同，例如 `(3.5, 1.1, -8.5)`。
+2. 底下加入 `MeshInstance3D`（`BoxMesh` 大小 `(3, 0.4, 3)`，位置 `(0, -0.2, 0)`，淺石色）與同尺寸的 `CollisionShape3D`。
+3. 附加腳本 `res://scripts/moving_platform.gd`：
 
 ```gdscript
-# 示範概念：旋轉漂浮的 3D 收集物
-extends Area3D
+# 示範概念：在物理影格中來回移動的平台
+extends AnimatableBody3D
 
-signal collected
+@export var travel := Vector3(0, 0, -4)
+@export var cycle_time := 10.0
 
-@export var spin_speed := 2.0
-@export var bob_height := 0.2
-
-var _base_y := 0.0
-var _time := 0.0
-
-@onready var mesh: MeshInstance3D = $Mesh
+var origin := Vector3.ZERO
+var phase := 0.0
 
 func _ready() -> void:
-	_base_y = mesh.position.y
-	body_entered.connect(_on_body_entered)
+	origin = position
 
-func _process(delta: float) -> void:
-	_time += delta
-	mesh.rotation.y += spin_speed * delta
-	mesh.position.y = _base_y + sin(_time * 3.0) * bob_height
-
-func _on_body_entered(body: Node3D) -> void:
-	if body.is_in_group("player"):
-		collected.emit()
-		queue_free()
+func _physics_process(delta: float) -> void:
+	phase += delta / cycle_time
+	var weight := 0.5 - 0.5 * cos(phase * TAU)
+	position = origin + travel * weight
 ```
 
-只轉動與移動 `Mesh` 子節點，碰撞區域保持不動，偵測範圍才穩定。
+平台頂面至少 3 × 3 公尺，10 秒走完來回 8 公尺。因為用餘弦曲線起步與減速，最快的瞬間約每秒 1.26 公尺，初學者比較容易站穩。
 
-### 步驟 2：把收集物放到標記位置
+### 步驟 2：寶珠場景
 
-在主場景中把 5 個 `orb.tscn` 實例分別放到第 14 章的 `OrbSpot1` 到 `OrbSpot5`。可以手動對齊位置，也可以在主場景的 `_ready()` 中用程式把收集物移到標記上（見練習 1）。
-
-### 步驟 3：出口場景
-
-1. 新增場景，根節點 `Area3D`，命名 `Exit`。
-2. 加入 `CollisionShape3D`（`BoxShape3D`，大小 `(2, 3, 1)`，位置 `(0, 1.5, 0)`）。
-3. 加入 `MeshInstance3D`，命名 `Door`，`BoxMesh` 同尺寸同位置，材質設為紅色，並在材質資源上按右鍵「唯一化」，或勾選材質的 `Resource → Local To Scene`，避免改色時影響其他物件。
-4. 附加腳本，存成 `exit.tscn`：
+1. 新增場景，根節點 `Area3D`，命名 `Orb`。
+2. 加入 `MeshInstance3D`，`SphereMesh` 半徑 `0.38`、高度 `0.76`，`Radial Segments` 8、`Rings` 4，做出低面數的寶石感。
+3. 材質勾選 `Emission`，顏色選金色，`Energy Multiplier` 約 `1.1`。配合第 14 章開啟的光暈，寶珠會微微發光。
+4. 加入 `CollisionShape3D`，`SphereShape3D` 半徑 `0.8`，比外觀大一點，比較容易碰到。
+5. 附加腳本 `res://scripts/orb.gd`：在 `_process` 中讓外觀自轉，並用 `sin()` 上下漂浮。只動外觀節點，碰撞範圍保持不動。
 
 ```gdscript
-# 示範概念：有鎖定與開啟兩種狀態的出口
-extends Area3D
-
-signal player_entered(is_open: bool)
-
-const LOCKED_COLOR := Color(0.85, 0.2, 0.2)
-const OPEN_COLOR := Color(0.2, 0.85, 0.35)
-
-var is_open := false
-
-@onready var door: MeshInstance3D = $Door
-
-func _ready() -> void:
-	body_entered.connect(_on_body_entered)
-	_update_color()
-
-func open() -> void:
-	is_open = true
-	_update_color()
-
-func _update_color() -> void:
-	var material := door.get_active_material(0) as StandardMaterial3D
-	if material:
-		material.albedo_color = OPEN_COLOR if is_open else LOCKED_COLOR
-
-func _on_body_entered(body: Node3D) -> void:
-	if body.is_in_group("player"):
-		player_entered.emit(is_open)
+func pop() -> void:
+	set_deferred("monitoring", false)
+	var fade: StandardMaterial3D = visual.material_override
+	fade.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	var tween := create_tween()
+	tween.tween_property(visual, "scale", Vector3.ONE * 2.0, 0.2)
+	tween.parallel().tween_property(fade, "albedo_color:a", 0.0, 0.2)
+	tween.tween_callback(queue_free)
 ```
 
-把 `exit.tscn` 拖進主場景，放到 `ExitSpot` 位置。
+`set_deferred("monitoring", false)` 讓寶珠在下一個安全時機停止偵測，避免在碰撞回呼中直接修改物理狀態。
 
-### 步驟 4：主場景邏輯
+`visual` 是 `orb.gd` 裡指向外觀 `MeshInstance3D` 的變數（例如 `@onready var visual: MeshInstance3D = $MeshInstance3D`），完整版見本章末的對照原始碼。淡出要改材質的透明度：先把材質的 `Transparency` 設為 `Alpha`，再用 Tween 把 `albedo_color:a` 降到 0。`MeshInstance3D` 雖然也有 `transparency` 屬性，但 Compatibility 繪圖器會忽略它，寶珠只會放大後突然消失。每顆寶珠都要有自己的材質；若多顆共用同一份材質，淡出時會一起變透明。
+
+### 步驟 3：擺放寶珠
+
+把 5 顆寶珠放在島頂上方約 1 公尺：一顆在第一座島，一顆要靠移動平台才拿得到，一顆在最高的小島，最後一顆放在終點島的小台階上，需要再跳一次。
+
+### 步驟 4：石拱門
+
+1. 在終點島靠後方加入 `Node3D`，命名 `Gate`。
+2. 底下加入 `StaticBody3D`：兩根石柱（`BoxMesh` `(0.7, 3.4, 0.7)`，各有碰撞）與一根橫樑。
+3. 在橫樑正面放 5 個小方塊當燈，先用深色材質。
+4. 加入 `AnimatableBody3D` 當門板：`BoxMesh` `(2.8, 3, 0.25)`、青綠色自發光材質，加上同尺寸碰撞。
+5. 在門板**後方**約 0.9 公尺加入 `Area3D`，命名 `ExitArea`，碰撞盒 `(2.8, 3, 1)`。
+
+### 步驟 5：主場景邏輯
+
+在 `main.gd` 中，把每顆寶珠的 `body_entered` 接到 `collect_item()`，把 `ExitArea` 的 `body_entered` 接到 `try_exit()`：
 
 ```gdscript
-# 示範概念：3D 主場景的計數、出口與狀態
-extends Node3D
-
-enum GameState { PLAYING, WON }
-
-const ORBS_TO_OPEN := 5
-
-var state := GameState.PLAYING
-var orbs_collected := 0
-
-@onready var exit_area = $Exit   # 刻意不標型別，以呼叫出口自訂的 open()
-@onready var hud = $HUD
-
-func _ready() -> void:
-	for orb in get_tree().get_nodes_in_group("orbs"):
-		orb.collected.connect(_on_orb_collected)
-	exit_area.player_entered.connect(_on_exit_player_entered)
-	hud.update_orbs(orbs_collected, ORBS_TO_OPEN)
-
-func _on_orb_collected() -> void:
-	if state != GameState.PLAYING:
+func collect_item(orb: Area3D) -> void:
+	if not is_playing() or not orbs.has(orb):
 		return
-	orbs_collected += 1
-	hud.update_orbs(orbs_collected, ORBS_TO_OPEN)
-	if orbs_collected >= ORBS_TO_OPEN:
-		exit_area.open()
-		hud.show_message("出口已開啟！")
-
-func _on_exit_player_entered(is_open: bool) -> void:
-	if state != GameState.PLAYING:
-		return
-	if is_open:
-		state = GameState.WON
-		hud.show_result("你贏了！按 R 重新開始")
-		get_tree().paused = true
-	else:
-		hud.show_message("還需要收集 %d 個" % (ORBS_TO_OPEN - orbs_collected))
+	orbs.erase(orb)
+	orb.pop()
+	lamps[score].material_override = lamp_material
+	score += 1
+	if score == TARGET:
+		open_gate()
+	update_hud()
 ```
 
-HUD 的寫法與第 10 章相同：一個 `CanvasLayer`，提供 `update_orbs`、`show_message`、`show_result` 三個函式。`show_message` 可以用一個 `Timer` 讓訊息 2 秒後自動隱藏。第 15 章的掉落重設與 R 重開保留在同一個腳本中；暫停相關的 `Process Mode` 設定同第 10 章。
+`orbs.has(orb)` 確保同一顆寶珠不會重複計分。點亮第 `score` 盞燈用的是另一份金色發光材質 `lamp_material`（成員變數，在 `_ready()` 建立一個 `emission_enabled` 的 `StandardMaterial3D`）。不要直接借寶珠的材質：寶珠淡出時會把自己材質的透明度降到 0，共用的話燈也會跟著消失。
+
+`is_playing()` 與 `update_hud()` 是這一章新增的兩個小函式。這個階段還沒有標題畫面，`is_playing()` 只要 `return not won`；`update_hud()` 把寶珠數與拱門狀態寫進畫面上方的 `Label`。下一章加入標題與計時時，只需要改這兩個函式的內容，`collect_item()` 不用動。
+
+### 步驟 6：掉落回到起點
+
+沿用上一章的掉落判斷：玩家高度低於 −10 時，回到起點、速度歸零、攝影機直接對準。這一章多了移動平台，掉下去的機會變多，這個安全網就更重要了。
 
 ## 程式碼解說
 
-- `signal player_entered(is_open: bool)`：出口回報「玩家進來了」，並附上自己目前是否開啟。主場景據此決定是獲勝還是提示。
-- `get_active_material(0) as StandardMaterial3D`：取得網格目前使用的第一個材質。若材質設在 `Surface Material Override` 也能取得。`as` 轉型失敗時會得到 `null`，所以要檢查。
-- **共用材質的陷阱**：材質是資源，預設在所有使用它的地方共用。如果兩個出口共用同一個材質，打開一個另一個也會變綠。用「唯一化」或 `Local To Scene` 避免。
-- `"還需要收集 %d 個" % (ORBS_TO_OPEN - orbs_collected)`：格式化時用括號包住運算式。
-- 主場景在 `_ready` 中連接出口訊號，出口本身完全不知道「5」這個數字，日後要改成 3 個或 8 個只需要改主場景的常數。
+- `create_tween().set_process_mode(Tween.TWEEN_PROCESS_PHYSICS)`：讓門板在**物理影格**中移動。門板是有碰撞的 `AnimatableBody3D`，用物理影格移動，碰撞與畫面才會同步。
+- `tween_property(gate, "position:y", -1.7, 1.2)`：用 1.2 秒把門板降到地面以下。`"position:y"` 只改 Y，不影響其他分量。
+- `set_trans(Tween.TRANS_SINE)`：開始與結束都緩和，比等速移動更像機關。
+- 收集時另外用 `CPUParticles3D` 做一次性的金色粒子爆散：`one_shot` 加上 `explosiveness = 1.0`，所有粒子同時噴出，播完就用 `finished` 訊號釋放節點。
+- 勝利條件放在門後，而不是「收滿 5 顆就贏」：玩家要親自走過剛打開的門，結局更有儀式感。
 
 ## 交給 agent 的提示詞
 
 <AgentTask
-  title="比對 2D 與 3D 的遊戲邏輯"
-  prompt={`我有兩個 Godot 4.x GDScript 專案：2D 收集遊戲與 3D 收集遊戲（路徑：［填入兩個專案的路徑］）。請只讀取，不要修改。
-1. 比較兩者主場景腳本的狀態管理、計數、訊號連接方式，列出相同與不同之處。
-2. 指出 3D 專案中有沒有 2D 專案已經處理、但 3D 尚未處理的情境（例如勝利後的輸入、暫停時的 Process Mode、重開時暫停狀態的解除）。
-3. 檢查 3D 專案的出口材質是否會被多個節點共用。
-4. 執行 3D 專案的 godot --path ［3D 專案路徑］ --headless --quit-after 120 2>&1 | tail -n 30。
-5. 列出建議修改，依重要性排序，等我決定。`}
+  title="新增一個上下移動的平台"
+  prompt={`這是 Godot 4.7 的 3D 專案。移動平台腳本在 scripts/moving_platform.gd（AnimatableBody3D，有 travel 與 cycle_time 兩個 @export），主場景 scripts/main.gd 的 build_platforms() 用 make_platform(top, travel) 建立平台。
+任務：在起點島旁邊新增一個「上下移動」的平台，travel 為 (0, 1.5, 0)，讓玩家能搭上去看到更遠的風景。
+要求：
+1. 先讀兩個腳本，說明新平台的位置如何避開現有島嶼與寶珠，等我同意。
+2. 只修改 build_platforms()，不改 moving_platform.gd。
+3. 說明上下移動的平台與水平平台對角色跳躍高度可能的影響。
+4. 修改後執行 godot --headless --path . --quit-after 240 2>&1 | tail -n 30。
+5. 列出我要在遊戲中實際確認的事：站上平台時是否被穩定載著、平台到最高點時起跳是否正常。`}
 />
 
 ## 自我檢查
 
-- [ ] 收集物在原地旋轉並上下漂浮，碰到就消失。
-- [ ] HUD 顯示「收集 x / 5」。
-- [ ] 未收滿時進入出口會出現提示，不會獲勝。
-- [ ] 收滿 5 個時出口由紅轉綠並顯示訊息。
-- [ ] 進入開啟的出口後顯示獲勝並暫停；按 R 重新開始，所有收集物回來、出口變回紅色。
-- [ ] 至少一個收集物必須跳到平台上才拿得到。
+- [ ] 站在移動平台上不按任何鍵，角色會被載著走，不會滑落。
+- [ ] 寶珠會漂浮、自轉，碰到時放大淡出並噴出金色粒子。
+- [ ] 每收集一顆，拱門上就多亮一盞燈；同一顆不會重複計分。
+- [ ] 收滿 5 顆前，門板擋住入口；收滿後門板平順降下。
+- [ ] 穿過拱門後顯示勝利，角色停止操作；按 R 重新開始。
+- [ ] 掉下島嶼會回到起點。
 
 ## 練習
 
-1. 在主場景 `_ready()` 中，用迴圈把每個收集物的 `global_position` 設為對應 `OrbSpot` 標記的位置，讓關卡設計只需要移動標記。
-2. 出口開啟時，用 `Tween` 讓門往下沉入地面，而不是只改顏色（記得碰撞區域仍要保留以偵測玩家）。
-3. 加入一個計時器，HUD 顯示經過時間，獲勝時顯示總時間，並思考計時在暫停時是否該停止。
-4. 加入第 11 章的音效：收集、出口開啟、獲勝各一個，放在主場景中播放。
+1. 把第二個移動平台的 `cycle_time` 改成 4，感受速度變快後的難度差異。
+2. 讓寶珠被收集時，拱門上對應的燈先放大再縮回（提示：對燈也建立一個 `Tween`）。
+3. 收滿 5 顆時，讓攝影機暫時看向拱門 1 秒，再回到玩家身上。
 
 ## 常見錯誤與限制
 
-- **收集物碰不到**：檢查 `Area3D` 的碰撞形狀大小與位置、碰撞層與遮罩，並確認玩家有在 `player` 群組。
-- **出口顏色沒變**：材質在 `Mesh` 資源內而不是 `Surface Material Override`，或材質不是 `StandardMaterial3D`。用 `print(door.get_active_material(0))` 確認。
-- **重開後出口仍是綠色**：材質被改成共用資源且存回檔案，或是在編輯器執行時修改了資源。確認改色的材質是場景內的唯一資源。
-- **玩家站在出口裡收滿最後一個也不會獲勝**：因為沒有「重新進入」。可以在 `open()` 時用 `get_overlapping_bodies()` 檢查玩家是否已在範圍內，這是設計選擇。
-- **3D 中 HUD 字太小**：`CanvasLayer` 的 UI 不受 3D 攝影機影響，大小與 2D 篇的設定方式相同，可以用 `Theme` 統一調整。
-
-下一章把 3D 遊戲匯出到 Web：[17｜3D 匯出與效能](../17-3d-export/)。
+- **平台移動但角色不跟著走**：平台用了 `StaticBody3D`，或在 `_process` 而不是 `_physics_process` 中移動。
+- **角色在平台上抖動**：平台速度太快或頂面太小。先加長 `cycle_time` 讓平台變慢，並把頂面做到 3 × 3 以上。
+- **寶珠收集時出現物理錯誤訊息**：在碰撞回呼中直接修改 `monitoring` 或刪除節點。改用 `set_deferred()` 與 `queue_free()`。
+- **門降下了卻還擋路**：門板用 `StaticBody3D` 並直接改位置，碰撞沒有同步。改用 `AnimatableBody3D` 搭配物理影格的 Tween。
+- **收滿後站在門前就贏了**：偵測區放在門板前方，要移到門後。
 
 ## 對照可下載的階段專案
 
-上面的操作讓你練習手動建立節點；下載版用程式建立同樣職責的物件，節點在執行後才出現在 Remote 場景樹。請以遊戲行為對照，並用以下原始碼認識另一種組合方式。
+上面的操作讓你練習手動建立節點；下載版用程式建立同樣職責的物件，節點在執行後才出現在 Remote 場景樹。重點是行為一致，寫法不必一樣。
 
-<SourceExcerpt dimension="3d" stage="03-final" file="main" method="collect_item" />
+<SourceExcerpt dimension="3d" stage="03-platforms" file="moving_platform" />
 
-<SourceExcerpt dimension="3d" stage="03-final" file="main" method="try_exit" />
+<SourceExcerpt dimension="3d" stage="03-platforms" file="main" method="collect_item" />
+
+<SourceExcerpt dimension="3d" stage="03-platforms" file="main" method="open_gate" />
 
 ## 官方參考
 
+- AnimatableBody3D：https://docs.godotengine.org/en/4.7/classes/class_animatablebody3d.html
 - Area3D：https://docs.godotengine.org/en/4.7/classes/class_area3d.html
-- 資源與共用（Resources）：https://docs.godotengine.org/en/4.7/tutorials/scripting/resources.html
-- StandardMaterial3D：https://docs.godotengine.org/en/4.7/tutorials/3d/standard_material_3d.html
-- 官方入門「你的第一個 3D 遊戲」：https://docs.godotengine.org/en/4.7/getting_started/first_3d_game/index.html
+- CharacterBody3D：https://docs.godotengine.org/en/4.7/classes/class_characterbody3d.html
+- Tween：https://docs.godotengine.org/en/4.7/classes/class_tween.html
+- CPUParticles3D：https://docs.godotengine.org/en/4.7/classes/class_cpuparticles3d.html

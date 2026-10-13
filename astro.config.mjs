@@ -17,7 +17,7 @@ export default defineConfig({
    {label: '遊戲試玩', link: '/play/'},
    {label: '參考資料與授權', link: '/resources/'}
   ],
-  components: {Footer: './src/components/CourseFooter.astro'},
+  components: {Footer: './src/components/CourseFooter.astro', PageTitle: './src/components/CourseTitle.astro'},
   tableOfContents: {minHeadingLevel: 2, maxHeadingLevel: 3},
  }), mdx()],
 });

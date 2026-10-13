@@ -1,6 +1,6 @@
 ---
-title: "09｜2D 遊戲（三）：障礙、受傷與早期 Web 匯出"
-description: "加入靜止與移動的障礙物，碰到時累計受傷次數並給予短暫無敵，累計 3 次判定失敗；並在專案還小的時候先做一次 Web 匯出，及早發現平台問題。"
+title: "09｜2D 遊戲（三）：追人的敵人、受傷與早期 Web 匯出"
+description: "加入會追著玩家跑的刺球與會反彈的菱形，用 Timer 定時增加敵人；被碰到時少一顆心並短暫無敵，3 顆心用完判定失敗；並在專案還小時先做一次 Web 匯出。"
 sidebar:
   order: 9
 ---
@@ -11,26 +11,53 @@ import SourceExcerpt from '../../../components/SourceExcerpt.astro';
 
 ## 學習目標
 
-1. 建立以 `Area2D` 為根節點的障礙物場景，並讓其中一種沿路徑來回移動。
-2. 讓障礙物發出訊號，由主場景累計受傷次數；累計 3 次判定失敗。
-3. 用 `Timer` 實作受傷後的短暫無敵，避免一次碰撞被扣好幾次。
-4. 在專案還小時就完成第一次 Web 匯出並在瀏覽器中執行，提早發現問題。
+1. 建立一個敵人場景，用 `enum` 區分兩種行為：會追玩家的**追蹤刺球**（chaser）與直線飛行、碰邊反彈的**反彈菱形**（bouncer）。
+2. 用 `direction_to()` 算出朝向玩家的方向，讓追蹤刺球每個影格往玩家靠近。
+3. 讓新出現的敵人先閃爍 0.5 秒才生效，玩家有時間反應。
+4. 用 `Timer` 每 6 秒增加一隻追蹤刺球，最多 5 隻敵人。
+5. 玩家有 3 條命；被碰到少一條並無敵 1 秒，命用完判定失敗。
+6. 理解「訊號只在進入時觸發一次」，持續接觸要在 `_physics_process` 中每格檢查。
+7. 在專案還小時完成第一次 Web 匯出，在瀏覽器中執行。
 
 本章對應 2D 範例的「03 hazards」階段，見 [下載頁](../../downloads/)。
 
 ## 核心概念
 
-### 為什麼需要無敵時間
+### 用 enum 讓一個場景有兩種行為
 
-`body_entered` 在玩家**進入**區域時觸發一次。但若玩家離開後馬上又碰回去，或同時碰到兩個相鄰的障礙物，就會在不到一秒內被扣好幾次。常見解法是受傷後給玩家一小段無敵時間（例如 1 秒），期間忽略所有傷害，並讓角色閃爍提示。
+兩種敵人的碰撞方式、受傷規則都一樣，差別只在怎麼移動與長什麼樣子。與其做兩個幾乎相同的場景，不如在同一個腳本中用列舉（`enum`）記住「我是哪一種」：
 
-### 誰記錄受傷次數
+```gdscript
+enum Kind { CHASER, BOUNCER }
+@export var kind: Kind = Kind.CHASER
+```
 
-和星星一樣，障礙物只負責回報「我碰到玩家了」，**次數由主場景記錄**。無敵狀態則屬於玩家本身。所以流程是：
+加上 `@export` 後，檢查器會出現下拉選單，每個實例可以各自選擇。
 
-1. 障礙物發出 `hit_player` 訊號。
-2. 主場景收到後先問玩家「你現在能受傷嗎？」。
-3. 可以的話，次數加一並讓玩家進入無敵；次數到 3 就判定失敗。
+### 朝玩家前進：direction_to
+
+`a.direction_to(b)` 回傳從 `a` 指向 `b`、長度為 1 的向量。乘上速度與 `delta`，就是這個影格要走的位移：
+
+```gdscript
+position += position.direction_to(target.global_position) * speed * delta
+```
+
+每個影格重新計算方向，所以玩家怎麼跑，刺球就怎麼轉彎追。只要追蹤速度（每秒 120 像素）比玩家慢，玩家就有機會甩開，衝刺則是緊急脫身的工具。
+
+### 訊號只在「進入」時觸發一次
+
+`body_entered` 只在玩家**進入**區域的那一刻發出。如果玩家一直貼著敵人，就不會再收到訊號。有兩種情況會因此出錯：
+
+- 玩家在無敵期間碰到敵人，無敵結束後仍然重疊，卻不會再受傷。
+- 敵人剛出現時還在閃爍、不算數，玩家正好站在那裡，生效後也不會觸發。
+
+所以下載版**不用訊號判斷受傷**，而是在主場景的 `_physics_process` 中，每個物理影格問每隻敵人「你現在有沒有和玩家重疊？」（`overlaps_body()`）。星星適合用訊號，因為收集只需要發生一次；持續性的傷害則適合每格檢查。
+
+### 受傷規則由誰負責
+
+- **敵人**只負責移動與外觀，另外提供 `is_active()`，回答「我生效了沒」。
+- **玩家**記錄自己還剩多少無敵時間（`invulnerable`）。
+- **主場景**決定規則：檢查重疊、扣命、給無敵時間、判斷失敗。
 
 <LessonDiagram kind="state" />
 
@@ -40,115 +67,154 @@ Web 平台有一些桌面沒有的限制：只支援 Compatibility 繪圖器、�
 
 ## 動手操作
 
-### 步驟 1：障礙物場景
+### 步驟 1：敵人場景
 
-1. 新增場景，根節點 `Area2D`，命名 `Hazard`，加入 `hazards` 群組。
-2. 加入 `CollisionShape2D`（`RectangleShape2D`，大小 `32×32`）。
-3. 加入 `Polygon2D` 或 `ColorRect`，顏色用紅色系，形狀和碰撞框對齊。
-4. 附加腳本並存成 `hazard.tscn`：
+1. 新增場景，根節點 `Area2D`，命名 `Enemy`。
+2. 加入 `CollisionShape2D`（`CircleShape2D`，半徑 `16`）。`Layer` 全部取消勾選，`Mask` 只勾第 1 層。
+3. 附加腳本 `res://scripts/enemy.gd`，場景存成 `enemy.tscn`：
 
 ```gdscript
-# 示範概念：碰到玩家時發出訊號的障礙物
+# 示範概念：兩種行為的敵人，出現後先閃爍 0.5 秒
 extends Area2D
 
-signal hit_player
+enum Kind { CHASER, BOUNCER }
 
-func _ready() -> void:
-	body_entered.connect(_on_body_entered)
+@export var kind: Kind = Kind.CHASER
+@export var speed: float = 120.0
+var drift := Vector2(150, 90)
+var target: Node2D
+var arena := Rect2(48, 96, 864, 456)
+var warmup: float = 0.5
 
-func _on_body_entered(body: Node2D) -> void:
-	if body.is_in_group("player"):
-		hit_player.emit()
-```
-
-### 步驟 2：讓障礙物移動
-
-最簡單的移動方式是在障礙物腳本中加入來回擺動。新增 `@export` 變數，讓每個實例可以設定不同的移動距離：
-
-```gdscript
-# 示範概念：沿 X 軸來回移動（加在 hazard.gd 中）
-@export var move_distance := 0.0   # 0 表示不移動
-@export var move_speed := 1.5
-
-var _start_position := Vector2.ZERO
-var _time := 0.0
+func is_active() -> bool:
+	return warmup <= 0.0
 
 func _physics_process(delta: float) -> void:
-	if move_distance == 0.0:
-		return
-	_time += delta
-	position.x = _start_position.x + sin(_time * move_speed) * move_distance
+	if warmup > 0.0:
+		warmup -= delta
+	elif kind == Kind.CHASER:
+		chase(delta)
+	else:
+		bounce(delta)
+	queue_redraw()
+
+func chase(delta: float) -> void:
+	if is_instance_valid(target):
+		position += position.direction_to(target.global_position) * speed * delta
+
+func bounce(delta: float) -> void:
+	position += drift * delta
+	if position.x < arena.position.x or position.x > arena.end.x:
+		drift.x = -drift.x
+	if position.y < arena.position.y or position.y > arena.end.y:
+		drift.y = -drift.y
+	position = position.clamp(arena.position, arena.end)
+
+func _draw() -> void:
+	var color := Color("e0673f") if kind == Kind.CHASER else Color("e85d8a")
+	if not is_active():
+		draw_arc(Vector2.ZERO, 26.0, 0.0, TAU, 32, Color(color, 0.6), 3.0)
+	else:
+		draw_circle(Vector2.ZERO, 18.0, color)
 ```
 
-並在 `_ready()` 中加上 `_start_position = position`。在主場景放置 3 到 5 個障礙物，其中幾個把 `move_distance` 設為 `120`。也可以改用 `AnimationPlayer` 或 `Path2D` 加 `PathFollow2D` 做出更複雜的路線。
+`arena` 是可活動範圍，請依你的場地大小調整。外觀先用圓形，下載版的刺球與菱形是在 `_draw()` 中用多邊形畫的，可以在本章最後的原始碼中參考。
 
-### 步驟 3：玩家的無敵時間
+### 步驟 2：玩家的無敵時間
 
-在玩家場景中加入 `Timer` 子節點，命名 `InvincibleTimer`，`Wait Time` 設 `1.0`，勾選 `One Shot`。在 `player.gd` 加入：
+在 `player.gd` 加入一個倒數變數，並在 `_physics_process` 開頭減少它：
 
 ```gdscript
-# 示範概念：玩家的受傷與無敵狀態（加在 player.gd 中）
-@onready var invincible_timer: Timer = $InvincibleTimer
+# 示範概念：玩家記錄自己的無敵時間（加在 player.gd 中）
+var invulnerable: float = 0.0
 
-func can_take_damage() -> bool:
-	return invincible_timer.is_stopped()
-
-func start_invincible() -> void:
-	invincible_timer.start()
-
-func _process(_delta: float) -> void:
-	# 無敵期間閃爍
-	if invincible_timer.is_stopped():
-		modulate.a = 1.0
-	else:
-		modulate.a = 0.3 if int(invincible_timer.time_left * 10) % 2 == 0 else 1.0
+func _physics_process(delta: float) -> void:
+	invulnerable = maxf(0.0, invulnerable - delta)
+	# 無敵期間閃爍：每 1/12 秒切換一次透明度
+	modulate.a = 0.35 if invulnerable > 0.0 and int(invulnerable * 12.0) % 2 == 0 else 1.0
+	# ……原本的移動與衝刺程式……
 ```
 
-### 步驟 4：主場景累計受傷
+順手在 `try_dash()` 裡加上 `invulnerable = maxf(invulnerable, dash_time)`，衝刺期間就能穿過敵人。這讓衝刺不只是「走得快」，還是脫困的方法。
 
-在 `main.gd` 中加入：
+### 步驟 3：放置敵人與生成計時器
+
+1. 打開 `main.tscn`，拖入 3 個 `enemy.tscn`：一個 `kind` 設為 `CHASER`，兩個設為 `BOUNCER`，各放在場地角落，遠離玩家出生點。
+2. 新增 `Timer` 節點，命名 `SpawnTimer`，`Wait Time` 設 `6`，勾選 `Autostart`。
+3. 選取 `SpawnTimer`，在節點面板把 `timeout` 訊號連接到 `Main` 的 `spawn_hazard` 函式（下一步建立）。
+
+### 步驟 4：主場景的受傷與生成規則
+
+在 `main.gd` 加入：
 
 ```gdscript
-# 示範概念：主場景累計受傷次數（加在 main.gd 中）
-const MAX_HITS := 3
-var hits := 0
+# 示範概念：每格檢查重疊、扣命、定時生成（加在 main.gd 中）
+const MAX_LIVES: int = 3
+const MAX_ENEMIES: int = 5
+const ENEMY_SCENE := preload("res://enemy.tscn")
 
-func _connect_hazards() -> void:
-	for hazard in get_tree().get_nodes_in_group("hazards"):
-		hazard.hit_player.connect(_on_hazard_hit_player)
+var lives: int = MAX_LIVES
+var enemies: Array[Area2D] = []
+var won: bool = false
 
-func _on_hazard_hit_player() -> void:
-	# 回傳型別是 Node，要呼叫玩家自訂的函式，這裡刻意不標型別
-	var player = get_tree().get_first_node_in_group("player")
-	if player == null or not player.can_take_damage():
+func _ready() -> void:
+	# ……原本連接星星的程式……
+	for child in get_children():
+		if child.is_in_group("enemies"):
+			child.target = player
+			enemies.append(child)
+
+func _physics_process(_delta: float) -> void:
+	for enemy in enemies:
+		if enemy.is_active() and enemy.overlaps_body(player):
+			damage_player()
+			return
+
+func damage_player() -> void:
+	if finished or player.invulnerable > 0.0:
 		return
-	hits += 1
-	print("受傷：%d / %d" % [hits, MAX_HITS])
-	if hits >= MAX_HITS:
-		_lose()
-	else:
-		player.start_invincible()
+	lives -= 1
+	player.invulnerable = 1.0
+	print("生命：%d / %d" % [lives, MAX_LIVES])
+	if lives <= 0:
+		end_game(false)
 
-func _lose() -> void:
-	print("失敗！按 R 重新開始")
-	var player := get_tree().get_first_node_in_group("player")
-	if player:
-		player.set_physics_process(false)
+func end_game(won_game: bool) -> void:
+	finished = true
+	won = won_game
+	print(("你贏了！" if won_game else "失敗！") + "按 R 重新開始")
+	player.set_physics_process(false)
+	$SpawnTimer.stop()
+	for enemy in enemies:
+		enemy.set_physics_process(false)
+
+func spawn_hazard() -> void:
+	if finished or enemies.size() >= MAX_ENEMIES:
+		$SpawnTimer.stop()
+		return
+	var enemy = ENEMY_SCENE.instantiate()  # 回傳型別是 Node，這裡刻意不標型別
+	enemy.position = Vector2(60, 110)
+	enemy.target = player
+	enemy.add_to_group("enemies")
+	add_child(enemy)
+	enemies.append(enemy)
 ```
 
-記得在 `_ready()` 中呼叫 `_connect_hazards()`。
+記得在 `enemy.tscn` 的節點面板把根節點加入 `enemies` 群組，`_ready()` 才找得到場景中原本的敵人。
+
+現在有「贏」和「輸」兩種結束方式，把它們集中到 `end_game(won_game)`：把第 8 章 `collect_item()` 結尾的三行（`finished = true`、`print(...)`、`player.set_physics_process(false)`）改成一行 `end_game(true)`。以後結束時要多做什麼（停止敵人、顯示結果），只需要改這個函式；第 10 章就會從這裡接著重構。
 
 ### 步驟 5：早期 Web 匯出
 
 1. 確認第 1 章已安裝與編輯器同版本的匯出範本。
 2. 選單「專案 → 匯出」（Project → Export），按「新增」選 **Web**。
 3. 把 `Export Path` 設為 `build/web/index.html`（先在專案中建立 `build/web` 資料夾，並確認 `.gitignore` 已忽略 `build/`）。
-4. 檢查 `Thread Support`（執行緒支援）選項：本課程建議**關閉**，這樣產生的檔案不需要特殊伺服器標頭就能在一般靜態網站上執行。（此選項在 Godot 4.3 之後提供，若你的版本介面不同，請以第 13 章與官方文件為準。）
+4. 檢查 `Thread Support`（執行緒支援）選項：本課程建議**關閉**，這樣產生的檔案不需要特殊伺服器標頭就能在一般靜態網站上執行。
 5. 按「匯出專案」，在存檔對話框中保持「以除錯模式匯出」勾選（除錯版的錯誤訊息較完整，適合早期測試），按存檔。
 6. 在終端機啟動本機伺服器並開瀏覽器：
 
 ```bash
-cd ~/godot-projects/star-collector
+cd ~/godot-projects/star-garden
 python3 -m http.server 8000 --directory build/web
 # 用瀏覽器開 http://localhost:8000
 ```
@@ -157,59 +223,82 @@ python3 -m http.server 8000 --directory build/web
 
 ## 程式碼解說
 
-- `get_tree().get_first_node_in_group("player")`：取得群組中的第一個節點，找不到時回傳 `null`，所以後面要檢查。
-- `player.can_take_damage()`：把「能不能受傷」的判斷留在玩家身上，主場景不需要知道無敵是用 `Timer` 實作的。
-- `invincible_timer.is_stopped()`：`One Shot` 的計時器跑完後會停止，代表無敵結束。
-- `modulate.a`：節點的整體透明度（含子節點），用來做閃爍。
-- `sin(_time * move_speed) * move_distance`：`sin` 的值在 -1 到 1 之間，乘上距離就得到來回擺動的位移。
-
-**一個值得注意的細節**：如果玩家在無敵期間一直待在障礙物裡，無敵結束時並不會再次觸發 `body_entered`（因為沒有「重新進入」）。若你希望「持續待在障礙物中會持續受傷」，可以在無敵結束時用障礙物的 `get_overlapping_bodies()` 再檢查一次。這是一個很好的練習題，也是設計選擇，沒有唯一正解。
+- `enum Kind { CHASER, BOUNCER }`：列舉其實是有名字的整數（0 和 1）。用名字比較 `kind == Kind.CHASER`，程式讀起來就像規則本身。
+- `is_instance_valid(target)`：目標可能已被刪除（例如重開時），先檢查再使用，避免錯誤。
+- `drift.x = -drift.x`：撞到左右邊界就把水平速度反向，上下邊界同理；最後 `clamp` 把位置拉回範圍內，避免卡在邊界外來回抖動。
+- `warmup`：敵人剛出現時倒數 0.5 秒，期間只畫一個閃爍的圓圈、不移動、不傷人。`is_active()` 把這個規則包成一個問題，主場景只要問就好。
+- `enemy.overlaps_body(player)`：回傳這個 `Area2D` 目前是否和玩家重疊。它讀的是上一個物理步驟的結果，所以要在 `_physics_process` 中呼叫。
+- `if finished or player.invulnerable > 0.0: return`：扣命前先檢查。無敵時間內每格都會偵測到重疊，但不會重複扣命。
+- `return`（在迴圈中）：一個影格最多扣一次命，就算同時碰到兩隻敵人也一樣。
+- `$SpawnTimer.stop()`：敵人數到上限或遊戲結束，就停止計時器，不再浪費呼叫。
 
 ## 交給 agent 的提示詞
 
 <AgentTask
   title="檢查 Web 匯出設定（唯讀）"
-  prompt={`這是 Godot 4.x GDScript 2D 專案，我剛在編輯器中建立了 Web 匯出預設。請不要修改任何檔案。
+  prompt={`這是 Godot 4.7 GDScript 2D 專案，我剛在編輯器中建立了 Web 匯出預設。請不要修改任何檔案。
 1. 讀取 export_presets.cfg，列出 Web 預設的名稱、匯出路徑、是否啟用執行緒支援，以及其他和預設值不同的選項。
 2. 讀取 project.godot，確認繪圖器是否為 Compatibility（gl_compatibility）。
 3. 確認 .gitignore 是否忽略匯出資料夾。
 4. 執行 godot --version，並列出 ~/.local/share/godot/export_templates/ 的內容，確認版本一致。
-5. 告訴我用 CLI 匯出的完整指令（使用預設的實際名稱），但先不要執行。`}
+5. 執行 godot --path . --headless --quit-after 120 2>&1 | tail -n 30，回報是否有錯誤。
+6. 告訴我用 CLI 匯出的完整指令（使用預設的實際名稱），但先不要執行。`}
+/>
+
+<AgentTask
+  title="讓追蹤刺球被碰到後退開一下"
+  prompt={`這是 Godot 4.7 GDScript 2D 專案。enemy.gd 有 enum Kind { CHASER, BOUNCER }、chase(delta) 與 warmup；main.gd 的 damage_player() 在玩家被碰到時扣命並給 1 秒無敵。
+任務：玩家受傷時，讓碰到玩家的那隻追蹤刺球往反方向退開約 80 像素，避免無敵結束時又立刻扣命。
+要求：
+1. 先讀 enemy.gd 與 main.gd，說明你打算新增哪個函式、在哪裡呼叫，等我同意。
+2. 不改變「一格最多扣一次命」與「無敵期間不扣命」的規則。
+3. 執行 godot --path . --headless --quit-after 120 2>&1 | tail -n 30，貼出結果。
+4. 列出我需要在遊戲中手動測試的情況。`}
 />
 
 ## 自我檢查
 
-- [ ] 碰到障礙物一次，受傷次數只加一，角色開始閃爍約 1 秒。
-- [ ] 無敵期間碰到障礙物不會加次數。
-- [ ] 累計第 3 次時顯示失敗並停止移動；按 R 可以重來。
-- [ ] 移動的障礙物以出生位置為中心來回擺動。
+- [ ] 新出現的敵人先閃爍約半秒，期間碰到不會受傷。
+- [ ] 追蹤刺球會追著玩家轉彎；反彈菱形碰到場地邊緣會反彈。
+- [ ] 被碰到一次少一條命，角色閃爍約 1 秒；期間再碰不會扣命。
+- [ ] 一直貼著敵人不動，無敵結束後會再少一條命。
+- [ ] 衝刺可以穿過敵人而不受傷。
+- [ ] 每 6 秒多一隻追蹤刺球，總數不超過 5 隻。
+- [ ] 第 3 次受傷時顯示失敗並停止移動；按 R 可以重來。
 - [ ] 瀏覽器中可以載入並遊玩目前版本，按鍵有反應。
 
 ## 練習
 
-1. 實作「無敵結束時若仍在障礙物中就再受傷一次」的行為，並比較兩種設計的遊戲體驗。
-2. 把移動障礙物改用 `Path2D` 加 `PathFollow2D`，讓它沿著矩形路線巡邏。
-3. 讓玩家受傷時被往反方向推開一小段距離（提示：把障礙物位置傳給玩家，計算方向後設定一次性的速度）。
+1. 讓每隻新生成的追蹤刺球比上一隻快 10%，觀察難度曲線的變化。
+2. 修改生成位置：從場地四個角落中挑一個**離玩家最遠**的角落（提示：比較 `distance_to()`）。下載版的 `far_point()` 就是這樣做的。
+3. 比較兩種受傷判斷：用 `body_entered` 訊號，與在 `_physics_process` 中每格檢查。故意站在敵人裡不動，記錄兩者的差別。
 
 ## 常見錯誤與限制
 
-- **一次碰撞扣多次**：沒有無敵時間，或多個障礙物重疊。先確認無敵判斷有在扣次數**之前**執行。
-- **`Invalid call. Nonexistent function 'can_take_damage'`**：玩家腳本沒有這個函式，或群組裡的第一個節點不是玩家。
+- **一次碰撞扣多次**：扣命前沒有檢查 `invulnerable`，或無敵時間在扣命**之後**才檢查。
+- **站在敵人裡不會再受傷**：用了 `body_entered` 判斷傷害，見上方「訊號只在進入時觸發一次」。
+- **追蹤刺球不動**：`target` 沒有設定。場景中原本的敵人要在 `_ready()` 中指定，程式生成的敵人要在 `add_child` 前指定。
+- **`Invalid access to property 'invulnerable'`**：`player` 變數指到的不是掛著玩家腳本的節點。
 - **Web 版一片黑或卡在載入**：最常見是用 `file://` 直接開檔、範本版本不符，或啟用了執行緒支援但伺服器沒送出必要標頭。
 - **Web 版沒有聲音**：瀏覽器規定要在使用者點擊或按鍵後才能播放聲音，這是平台限制，第 11 章會處理。
 - **匯出後的畫面和編輯器不一樣**：檢查專案是否從一開始就使用 Compatibility 繪圖器。
 
+下一章加入標題畫面、三個波次與完整的介面：[10｜介面、波次與遊戲狀態](../10-ui-state/)。
+
 ## 對照可下載的階段專案
 
-上面的操作讓你練習手動建立節點；下載版用程式建立同樣職責的物件，節點在執行後才出現在 Remote 場景樹。請以遊戲行為對照，並用以下原始碼認識另一種組合方式。
+上面的操作讓你練習手動建立節點；下載版用程式建立同樣職責的物件，節點在執行後才出現在 Remote 場景樹。下載版的 `spawn_enemy()` 用程式建立敵人並從離玩家最遠的位置出現，`end_game()` 會停止計時器與所有敵人的移動。對照時以遊戲行為為準，程式寫法可以不同。
+
+<SourceExcerpt dimension="2d" stage="03-hazards" file="enemy" method="chase" />
+
+<SourceExcerpt dimension="2d" stage="03-hazards" file="main" method="_physics_process" />
 
 <SourceExcerpt dimension="2d" stage="03-hazards" file="main" method="damage_player" />
 
-<SourceExcerpt dimension="2d" stage="03-hazards" file="main" method="spawn_hazard" />
-
 ## 官方參考
 
-- Area2D 與訊號：https://docs.godotengine.org/en/4.7/classes/class_area2d.html
+- Area2D（`overlaps_body`）：https://docs.godotengine.org/en/4.7/classes/class_area2d.html
+- Vector2（`direction_to`）：https://docs.godotengine.org/en/4.7/classes/class_vector2.html
 - Timer：https://docs.godotengine.org/en/4.7/classes/class_timer.html
+- GDScript 列舉（enum）：https://docs.godotengine.org/en/4.7/tutorials/scripting/gdscript/gdscript_basics.html
 - 匯出至 Web：https://docs.godotengine.org/en/4.7/tutorials/export/exporting_for_web.html
-- Path2D 與 PathFollow2D：https://docs.godotengine.org/en/4.7/classes/class_pathfollow2d.html

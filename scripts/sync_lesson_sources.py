@@ -2,15 +2,15 @@
 from pathlib import Path
 root=Path(__file__).resolve().parents[1]
 entries={
-'07-2d-movement':('2d','01-movement',[('player',None)]),
-'08-2d-collection':('2d','02-collect',[('main','collect_item')]),
-'09-2d-hazards':('2d','03-hazards',[('main','damage_player'),('main','spawn_hazard')]),
-'10-ui-state':('2d','04-interface',[('main','update_hud')]),
-'11-audio-polish':('2d','05-final',[('main','collect_item')]),
-'14-3d-world':('3d','01-world',[('main','make_box')]),
-'15-3d-controller':('3d','02-controller',[('player',None)]),
-'16-3d-collection':('3d','03-final',[('main','collect_item'),('main','try_exit')]),
-'17-3d-export':('3d','03-final',[('main','update_camera')]),
+'07-2d-movement':('2d','01-movement',[('player', 'apply_movement'), ('player', 'try_dash')]),
+'08-2d-collection':('2d','02-collect',[('main', 'collect_item'), ('star', 'pop')]),
+'09-2d-hazards':('2d','03-hazards',[('enemy', 'chase'), ('main', '_physics_process'), ('main', 'damage_player')]),
+'10-ui-state':('2d','04-interface',[('main', 'start_wave'), ('main', 'finish_wave'), ('hud', 'draw_heart')]),
+'11-audio-polish':('2d','05-final',[('main', 'build_background'), ('main', 'save_best_time'), ('player', 'update_trail')]),
+'14-3d-world':('3d','01-world',[('main', 'build_environment'), ('main', 'make_island')]),
+'15-3d-controller':('3d','02-controller',[('player', 'camera_relative_direction'), ('player', 'update_jump_timers'), ('main', 'update_camera')]),
+'16-3d-collection':('3d','03-platforms',[('moving_platform', None), ('main', 'collect_item'), ('main', 'open_gate')]),
+'17-3d-export':('3d','04-final',[('patrol_enemy', None), ('main', 'respawn_player'), ('main', 'activate_checkpoint')]),
 }
 for slug,(dimension,stage,snippets) in entries.items():
  p=root/'src/content/docs/lessons'/f'{slug}.mdx'

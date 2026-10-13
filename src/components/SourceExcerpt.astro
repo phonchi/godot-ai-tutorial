@@ -2,7 +2,7 @@
 import {readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {Code} from 'astro:components';
-interface Props {dimension:'2d'|'3d';stage:string;file?:'main'|'player'|'item';method?:string;}
+interface Props {dimension:'2d'|'3d';stage:string;file?:'main'|'player'|'star'|'enemy'|'hud'|'orb'|'moving_platform'|'patrol_enemy';method?:string;}
 const {dimension,stage,file='main',method}=Astro.props;
 const relative=`examples/${dimension}/${stage}/scripts/${file}.gd`;
 let code=readFileSync(resolve(relative),'utf8');
@@ -14,6 +14,6 @@ if(method){
 ---
 <aside class="source-excerpt">
  <p><strong>下載專案的實際程式</strong> · <code>{relative}</code></p>
- <Code code={code} lang="gdscript" theme="github-light" />
+ <Code code={code} lang="gdscript" themes={{light:"github-light",dark:"github-dark"}} />
  <p style="font-size:.85rem">下載版用 <code>_ready()</code> 建立場景物件；上方編輯器練習則讓你手動建立節點。執行時切換 Scene 面板的「Remote」可對照真正的場景樹。此段直接取自下載版原始檔。</p>
 </aside>

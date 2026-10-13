@@ -1,177 +1,212 @@
 ---
-title: "11｜2D 遊戲（五）：音效與手感潤飾"
-description: "為收集、受傷、勝負加上原創或 CC0 音效，設定音訊匯流排；再用 Tween、粒子與鏡頭震動加強回饋，並處理瀏覽器的音效自動播放限制。"
+title: "11｜2D 遊戲（五）：音效、shader 與手感潤飾"
+description: "規則不變，讓遊戲「有反應」：產生並播放音效、用 canvas_item shader 畫出會呼吸的背景、加入螢火蟲粒子、衝刺殘影、畫面震動與受傷閃光，最後用 ConfigFile 把最佳紀錄存進 user://。"
 sidebar:
   order: 11
 ---
 
-import LessonDiagram from '../../../components/LessonDiagram.astro';
 import AgentTask from '../../../components/AgentTask.astro';
 import SourceExcerpt from '../../../components/SourceExcerpt.astro';
 
 ## 學習目標
 
-1. 知道如何取得**可合法使用**的音效：自己產生，或使用授權清楚的 CC0 素材。
-2. 用 `AudioStreamPlayer` 播放音效，並把音效與音樂分到不同的音訊匯流排（Audio Bus）。
-3. 處理「播放音效的節點同時被刪除」這個常見陷阱。
-4. 用 `Tween` 做出星星被收集時的縮放與淡出、受傷時的鏡頭震動。
-5. 了解 Web 平台的音效自動播放限制。
+1. 知道如何取得**可合法使用**的音效，並用 `AudioStreamPlayer` 播放；理解為什麼播放器要放在不會被刪除的節點上。
+2. 寫第一個 `canvas_item` shader：用 `UV`、`TIME`、`smoothstep` 畫出緩慢移動的光暈與暗角。
+3. 用 `CPUParticles2D` 加上加法混合（additive）的螢火蟲，並把衝刺做出殘影。
+4. 用 `Camera2D.offset` 做畫面震動，搭配短暫且低透明度的受傷閃光。
+5. 用 `ConfigFile` 把最佳時間存到 `user://`，並檢查讀寫的回傳值。
 
-完成後就是 2D 遊戲的最終版本，可與 2D 範例「05 final」階段對照，見 [下載頁](../../downloads/)，也可以到 [試玩頁](../../play/) 玩玩看。
+完成後就是 2D 遊戲「星星花園」的最終版本，可與 2D 範例「05 final」階段對照，見 [下載頁](../../downloads/)，也可以到 [試玩頁](../../play/) 玩玩看。
 
 ## 核心概念
 
 ### 「遊戲手感」來自回饋
 
-同樣的規則，有沒有回饋的感受差很多。一個動作發生時，玩家可以從三個管道得到確認：**聲音**（叮一聲）、**動畫**（星星放大後消失）、**畫面**（受傷時畫面震一下）。每個回饋都很短，但加總起來就讓遊戲「有反應」。
+同樣的規則，有沒有回饋的感受差很多。一個動作發生時，玩家可以從三個管道得到確認：**聲音**（叮一聲）、**動畫**（星星放大後消失、角色拖出殘影）、**畫面**（受傷時畫面震一下並閃紅）。每個回饋都只有零點幾秒，加起來就讓遊戲「有反應」。
+
+本章的原則是：**規則一行都不改**。所有修改都只是在既有事件發生時多做一件「讓人看見或聽見」的事。這樣就算潤飾出錯，也不會影響勝負判斷，第 12 章的行為測試依然能驗證規則。
 
 ### 音效的授權
 
-本課程的範例只使用原創或明確可自由使用的素材。實務上的選擇：
+本課程範例的六個音效（收集、衝刺、受傷、波次、勝利、失敗）都是由課程的建置腳本用數學函式產生的波形，以 CC0 釋出。你自己的專案可以這樣選擇：
 
-- **自己產生**：像 jsfxr 這類網頁版音效產生器，可以按幾個按鈕產生復古遊戲音效並下載 `.wav`。使用前請閱讀該工具頁面對產出音效的授權說明。
-- **CC0 素材庫**：例如 Kenney 的音效包標示為 CC0，可以商用且不需要標示出處；但每個素材庫、甚至每個檔案的授權可能不同，下載時請保存授權說明。
+- **自己產生**：像 jsfxr 這類網頁版音效產生器，按幾個按鈕就能產生復古遊戲音效並下載 `.wav`。使用前請閱讀該工具對產出音效的授權說明。
+- **CC0 素材庫**：例如 Kenney 的音效包標示為 CC0；但每個素材庫、甚至每個檔案的授權可能不同，下載時請保存授權說明。
 - **避免**：從影片或其他遊戲擷取、來源不明的「免費音效」。
 
-### 音訊匯流排
+### Shader 是「每個像素各跑一次」的小程式
 
-匯流排就像混音器的推桿。把音效送到 `SFX` 匯流排、音樂送到 `Music` 匯流排，之後就能分別調整音量，例如做一個「音效開關」只要靜音 `SFX`。
+`canvas_item` shader 的 `fragment()` 函式會對畫面上的每個像素執行一次，並得到這個像素在矩形中的位置 `UV`（左上 `(0, 0)`、右下 `(1, 1)`）以及遊戲開始後的秒數 `TIME`。你只要決定「這個位置、這個時間，顏色是什麼」，寫進 `COLOR`。因為 GPU 會平行處理所有像素，整個背景每個影格重算也不會拖慢遊戲。
 
-<LessonDiagram kind="signal" />
+### 存檔放在 user://
+
+`res://` 是專案資料夾，匯出後是唯讀的；玩家的資料要寫到 `user://`。桌面版會對應到作業系統的使用者資料夾；**Web 版則存在瀏覽器的 IndexedDB**，清除網站資料或使用無痕視窗時會消失。所以讀寫都要檢查回傳值，存不了也要讓遊戲照常進行。
 
 ## 動手操作
 
-### 步驟 1：準備音效檔
+### 步驟 1：準備並播放音效
 
-準備三個短音效：`pickup.wav`、`hurt.wav`、`win.wav`（失敗可以先共用 `hurt.wav` 或另做一個）。放在 `res://audio/` 資料夾。Godot 會自動匯入。短音效用 `.wav`，較長的背景音樂用 `.ogg`，檔案較小。
-
-### 步驟 2：設定匯流排
-
-1. 開啟編輯器下方的「音訊」（Audio）面板。
-2. 按「新增匯流排」兩次，命名為 `SFX` 與 `Music`，它們預設送往 `Master`。
-3. 存檔後會產生 `default_bus_layout.tres`，記得提交到 Git。
-
-### 步驟 3：在主場景播放音效
-
-在主場景加入三個 `AudioStreamPlayer` 節點：`PickupSound`、`HurtSound`、`EndSound`。分別把音效檔拖進它們的 `Stream` 屬性，`Bus` 選 `SFX`。
-
-為什麼放在主場景而不是星星裡？因為星星被收集時會呼叫 `queue_free()`，如果音效節點是星星的子節點，它會跟著被刪除，聲音只播了一瞬間就斷掉。
+1. 準備 `collect.wav`、`dash.wav`、`hit.wav`、`wave.wav`、`win.wav`、`lose.wav`，放到 `res://audio/`。短音效用 `.wav`，較長的背景音樂用 `.ogg`。
+2. 在主場景為每個音效加一個 `AudioStreamPlayer`（或像下載版一樣在 `_ready()` 中用迴圈建立），把檔案拖進 `Stream`，`Volume dB` 設為約 `-9`。
+3. 寫一個集中播放的函式，再在既有事件中呼叫：
 
 ```gdscript
-# 示範概念：在主場景播放音效（節錄）
-@onready var pickup_sound: AudioStreamPlayer = $PickupSound
-@onready var hurt_sound: AudioStreamPlayer = $HurtSound
-
-func _on_star_collected() -> void:
-	if state != GameState.PLAYING:
-		return
-	pickup_sound.pitch_scale = randf_range(0.95, 1.1)
-	pickup_sound.play()
-	# 其餘計數邏輯同第 10 章
+# 示範概念：所有音效都從這裡播放
+func play_sound(sound_name: String) -> void:
+	if DisplayServer.get_name() != "headless":
+		sounds[sound_name].play()
 ```
 
-`pitch_scale` 每次稍微變化，連續收集時聽起來比較不單調。
+`sounds` 是新的成員變數 `var sounds: Dictionary = {}`，鍵是音效名稱、值是對應的 `AudioStreamPlayer`；完整的建立迴圈見本章末的對照原始碼。
 
-### 步驟 4：星星消失動畫
+在 `collect_item()` 加 `play_sound("collect")`、在 `damage_player()` 加 `play_sound("hit")`、在 `start_wave()` 加 `play_sound("wave")`。衝刺則讓 `player.gd` 發出 `dashed` 訊號，主場景連接後播放 `dash` 並噴出一小團粒子。
 
-把星星的 `queue_free()` 改成先播動畫再刪除：
+播放器放在主場景而不是星星裡，是因為星星被收集後會被刪除。若音效節點是星星的子節點，聲音只會播一瞬間就斷掉。
+
+`DisplayServer.get_name() != "headless"` 這個守衛讓無畫面的自動測試（`--headless`）跳過播放，測試紀錄保持乾淨。
+
+### 步驟 2：背景 shader
+
+1. 在主場景加入 `ColorRect`，命名 `Background`，大小設為 `960 × 600`，`Mouse → Filter` 設為 `Ignore`。
+2. 在檢查器 `Ordering → Z Index` 設為 `-1`，讓它畫在場地與角色後面。
+3. `Material` 選「新增 ShaderMaterial」，再在 `Shader` 新增 `background.gdshader`，存到 `res://shaders/`（先在檔案系統建立 `shaders/` 資料夾）：
+
+```glsl
+shader_type canvas_item;
+
+uniform vec4 base_color : source_color = vec4(0.063, 0.188, 0.176, 1.0);
+uniform vec4 warm_light : source_color = vec4(0.965, 0.769, 0.325, 1.0);
+
+float pool(vec2 uv, vec2 center, float radius) {
+	vec2 stretched = (uv - center) * vec2(1.6, 1.0);
+	return smoothstep(radius, 0.0, length(stretched));
+}
+
+void fragment() {
+	float t = TIME * 0.15;
+	vec2 warm_center = vec2(0.32 + 0.12 * sin(t * 1.3), 0.38 + 0.10 * cos(t * 1.1));
+	vec3 color = base_color.rgb + warm_light.rgb * pool(UV, warm_center, 0.55) * 0.22;
+	float vignette = smoothstep(0.95, 0.35, length(UV - 0.5));
+	color *= mix(0.55, 1.0, vignette);
+	COLOR = vec4(color, 1.0);
+}
+```
+
+4. 存檔後，在檢查器的 `Shader Parameters` 就能看到 `base_color` 與 `warm_light` 的顏色選擇器，不必改程式就能調色。
+5. 場地底色若是不透明的節點（例如第 7 章為了看見牆而加的 `ColorRect`，或你另外鋪的地板），會把背景蓋住；把它的顏色改成半透明，或刪掉不用，光暈才透得出來。下載版在主場景 `_draw()` 畫場地，底色的 alpha 是 `0.45`。
+
+### 步驟 3：螢火蟲與衝刺殘影
+
+1. 加入 `CPUParticles2D`，命名 `Fireflies`，`Z Index` 也設為 `-1`，位置放在場地中央。
+2. 設定 `Emission Shape` 為 `Rectangle`、`Rect Extents` 約 `(440, 230)`、`Amount` `36`、`Lifetime` `6`、`Preprocess` `6`（一開場就已經有螢火蟲在飛）、`Gravity` `(0, 0)`、`Initial Velocity` `6`～`18`。
+3. `Texture` 選「新增 GradientTexture2D」，`Fill` 改為 `Radial`，就得到一顆邊緣柔和的圓點，而不是預設的方塊。
+4. `Color Ramp` 設定「透明 → 淡綠黃 → 透明」，粒子就會淡入淡出。
+5. `Material` 新增 `CanvasItemMaterial`，`Blend Mode` 選 `Add`：顏色會疊加變亮，看起來像在發光。
+
+殘影則寫在 `player.gd`：衝刺時每個物理影格把目前位置推進 `trail` 陣列，不衝刺時逐格移除；`_draw()` 依序用越來越淡、越來越小的圓畫出這些位置。
+
+### 步驟 4：畫面震動與受傷閃光
+
+1. 在主場景加入 `Camera2D`，位置設為畫面中心 `(480, 300)`。
+2. 受傷時把 `shake` 設為 `0.12` 秒；在 `_process()` 裡倒數，期間每個影格把 `camera.offset` 設為 ±4 像素內的隨機值，結束時歸零。
+3. HUD 已經在 `CanvasLayer` 上，所以不會跟著晃，數字始終清楚可讀。
+4. 受傷閃光：HUD 的 `flash` 設為 `0.1`，`_draw()` 畫一層紅色、透明度不超過 0.2 的矩形，0.1 秒內淡掉。
 
 ```gdscript
-# 示範概念：被收集時縮放淡出（星星腳本）
-func _on_body_entered(body: Node2D) -> void:
-	if not body.is_in_group("player"):
-		return
-	collected.emit()
-	set_deferred("monitoring", false)  # 動畫期間不再觸發
-	var tween := create_tween()
-	tween.set_parallel(true)
-	tween.tween_property(self, "scale", Vector2(1.8, 1.8), 0.2)
-	tween.tween_property(self, "modulate:a", 0.0, 0.2)
-	tween.chain().tween_callback(queue_free)
+# 示範概念：只移動 offset，不移動鏡頭本身的位置
+if shake > 0.0:
+	shake = maxf(0.0, shake - delta)
+	camera.offset = Vector2(rng.randf_range(-4.0, 4.0), rng.randf_range(-4.0, 4.0))
+else:
+	camera.offset = Vector2.ZERO
 ```
 
-### 步驟 5：受傷時鏡頭震動
+`shake`、`camera` 與 `rng` 都要在 `main.gd` 宣告：`var shake: float = 0.0`、指向 `Camera2D` 的 `camera`，以及 `var rng := RandomNumberGenerator.new()`。完整版見本章末的對照原始碼。
 
-在玩家底下加 `Camera2D`（或放在主場景），附加腳本：
+### 步驟 5：最佳紀錄
 
 ```gdscript
-# 示範概念：簡單的鏡頭震動
-extends Camera2D
+# 示範概念：讀取失敗時回傳 -1，表示「還沒有紀錄」
+const SAVE_PATH := "user://best.cfg"
 
-var _shake_strength := 0.0
-
-func shake(strength: float = 8.0) -> void:
-	_shake_strength = strength
-
-func _process(delta: float) -> void:
-	if _shake_strength <= 0.0:
-		offset = Vector2.ZERO
-		return
-	offset = Vector2(randf_range(-1, 1), randf_range(-1, 1)) * _shake_strength
-	_shake_strength = move_toward(_shake_strength, 0.0, 30.0 * delta)
+func load_best_time() -> float:
+	var config := ConfigFile.new()
+	if config.load(SAVE_PATH) != OK:
+		return -1.0
+	return config.get_value("star_garden", "best_time", -1.0)
 ```
 
-受傷時呼叫 `shake()`。如果主場景會暫停，記得鏡頭在暫停時的行為是否符合你的期望。
-
-### 步驟 6（選做）：粒子
-
-在星星被收集的位置產生一團小點：加入 `CPUParticles2D`，`One Shot` 勾選、`Emitting` 先關閉、`Amount` 約 `12`、`Explosiveness` 設 `1`。在 Web 匯出時，`CPUParticles2D` 的相容性最穩定。同樣地，粒子節點如果是星星的子節點，會隨星星一起被刪除，所以要在動畫結束前播完，或者把它產生在主場景。
+在 `_ready()` 讀入 `best_time`；在 `end_game(true)` 中，若這次時間比較短（或還沒有紀錄），就更新並呼叫 `save_best_time()`。結算畫面與 HUD 右上角同時顯示「Best」。
 
 ## 程式碼解說
 
-- `create_tween()`：建立一個綁定在這個節點上的補間動畫，節點被刪除時會自動停止。
-- `set_parallel(true)`：接下來的 `tween_property` 同時進行（放大與淡出一起發生）。
-- `tween.chain()`：回到依序執行，等前面的動畫結束後才呼叫 `queue_free`。
-- `"modulate:a"`：屬性路徑可以指到子欄位，這裡只改透明度。
-- `set_deferred("monitoring", false)`：在物理回呼中不能直接修改 `monitoring`，要延後到安全的時機。
-- `move_toward(a, b, step)`：讓數值以固定速度逼近目標，用來讓震動逐漸減弱。
+- **`uniform vec4 base_color : source_color`**：`uniform` 是從外部（檢查器或 GDScript）傳進 shader 的參數；`source_color` 提示編輯器顯示顏色選擇器，並正確處理色彩空間。
+- **`TIME`**：遊戲開始後經過的秒數。乘上很小的係數（`0.15`）再丟進 `sin`、`cos`，光暈中心就會緩慢繞圈。
+- **`smoothstep(a, b, x)`**：讓數值在 a 到 b 之間平滑過渡。這裡把「距離中心的遠近」變成「0 到 1 的亮度」，邊緣不會有生硬的分界。
+- **暗角（vignette）**：離畫面中心越遠，顏色乘上越小的係數，視線自然集中到場地中央。
+- **`z_index = -1`**：同一個 `CanvasLayer` 內，`z_index` 越小越早畫。背景 `ColorRect` 與螢火蟲都用 `-1`，所以在主場景的 `_draw()` 與角色之下。
+- **`CanvasItemMaterial.BLEND_MODE_ADD`**：把粒子顏色「加」到背景上而不是覆蓋，重疊越多越亮。
+- **`rng.seed = 7`**：震動用自己的 `RandomNumberGenerator` 並指定種子，每次執行的晃動序列相同，錄影或除錯時比較好比對。
+- **閃光的長度與亮度**：快速且大面積的強烈閃爍可能讓光敏感的玩家不適。範例把閃光限制在 0.1 秒內、透明度最高 0.2，也只在受傷時出現。
+- **`config.save()` 回傳 `Error`**：存不了時只用 `push_warning` 提醒，不中斷遊戲。Web 版在無痕模式等情況下可能無法保存。
 
 ## 交給 agent 的提示詞
 
 <AgentTask
-  title="加入受傷回饋（有範圍）"
-  prompt={`這是 Godot 4.x GDScript 2D 收集遊戲，已有遊戲狀態機與 HUD。主場景有 HurtSound（AudioStreamPlayer），玩家受傷時主場景會增加 hits。
-任務：玩家受傷時，播放 HurtSound、讓鏡頭震動、讓 HUD 的受傷文字短暫變紅再恢復。
+  title="加入一個背景 shader 參數（有範圍）"
+  prompt={`這是 Godot 4.7 GDScript 的 2D 遊戲「星星花園」。背景用 shaders/background.gdshader（canvas_item），掛在 scripts/main.gd 的 build_background() 建立的 ColorRect 上。
+任務：新增一個 uniform float speed，控制光暈移動的快慢，預設值要讓畫面和現在完全一樣。
 要求：
-1. 先閱讀相關腳本並說明計畫，列出會修改的檔案，等我同意。
-2. 不要修改 .tscn；若需要新增節點（例如 Camera2D），列出我要在編輯器中進行的步驟。
-3. 不要新增或下載任何音效檔。
-4. 修改後執行 godot --path . --headless --quit-after 300 2>&1 | tail -n 40。
-5. 提醒我 headless 模式不會輸出聲音也看不到震動，列出我要在視窗中確認的三件事。`}
+1. 先閱讀 shader 與 build_background()，說明你打算改哪幾行，等我同意。
+2. 只修改 shaders/background.gdshader；不改遊戲規則、不改其他腳本。
+3. 修改後執行 godot --headless --path . --quit-after 240 2>&1 | tail -n 30，以及 godot --headless --path . --script res://tests/behavior.gd 2>&1 | tail -n 5，貼出結果。
+4. 提醒我 headless 模式看不到 shader 效果，並告訴我如何在檢查器中即時調整 speed 來確認。`}
 />
 
 ## 自我檢查
 
-- [ ] 收集星星時聲音完整播完，沒有被截斷。
-- [ ] 星星消失有放大淡出動畫，動畫期間不會被重複收集。
-- [ ] 受傷時有聲音與鏡頭震動，震動會逐漸停止。
-- [ ] 在音訊面板把 `SFX` 靜音後，所有音效都消失。
-- [ ] 每個音效檔我都知道來源與授權。
+- [ ] 收集星星、衝刺、受傷、進入新波次、勝利或失敗時，各有不同的聲音，且不會被截斷。
+- [ ] 背景有緩慢移動的暖色與冷色光暈，四角較暗。
+- [ ] 螢火蟲是柔和的圓點，不是方塊，而且會發光般地疊加。
+- [ ] 衝刺時角色後面拖出淡綠色殘影，並噴出一小團粒子。
+- [ ] 受傷時畫面輕微震動、閃一下紅色，HUD 文字不會跟著晃。
+- [ ] 贏一次後重新開始，右上角出現「BEST」；關掉遊戲再開，紀錄仍在。
 
 ## 練習
 
-1. 加入背景音樂（`.ogg`，在匯入設定中勾選 `Loop`），送到 `Music` 匯流排，並在 HUD 加一個切換音樂開關的按鈕（使用 `AudioServer.set_bus_mute`）。
-2. 讓玩家移動時角色外觀有輕微的上下彈跳（用 `sin` 和時間計算 `Polygon2D` 的位移）。
-3. 把收集時的音高隨連續收集次數逐漸升高，一段時間沒收集就重設。
+1. 在 shader 加入第三個光暈，顏色用 uniform 讓檢查器可以調整。
+2. 收集星星時讓音高隨本波已收集數量升高（提示：`AudioStreamPlayer.pitch_scale`），進入新波次時重設。
+3. 新增一個「減少畫面效果」的開關：關閉時不震動、不閃光，並把這個設定也存進同一個 `ConfigFile` 的另一個區段。
 
 ## 常見錯誤與限制
 
 - **聲音被截斷**：播放音效的節點被 `queue_free()` 了。把播放器放在不會被刪除的節點上。
-- **同一音效快速重複播放時互相打斷**：一個 `AudioStreamPlayer` 同時只播一個聲音（除非調整 `Max Polyphony`）。
-- **Web 版一開始沒有聲音**：瀏覽器的自動播放政策要求使用者先與頁面互動（點擊或按鍵）才能播放聲音。可以在遊戲開始前加一個「按任意鍵開始」畫面，同時也是第 10 章練習 2 的好用途。
+- **同一音效快速重複時互相打斷**：一個 `AudioStreamPlayer` 同時只播一個聲音，除非調高 `Max Polyphony`。
+- **背景蓋住了整個遊戲**：`ColorRect` 的 `z_index` 沒有設成負數，或場地底色沒有改成半透明。
+- **shader 編譯錯誤**：shader 語言不是 GDScript，數值要寫成 `1.0` 而不是 `1`，每行要以分號結尾。錯誤會顯示在 shader 編輯器下方。
+- **粒子是方塊**：`CPUParticles2D` 沒有設定 `Texture` 時，每顆粒子都是一個小方塊。
+- **Web 版一開始沒有聲音**：瀏覽器規定使用者先與頁面互動（點擊或按鍵）才能播放聲音。標題畫面剛好讓玩家先按一次 Enter。
+- **Web 版紀錄消失**：`user://` 在瀏覽器中存於 IndexedDB，清除網站資料、無痕模式或換瀏覽器都會讓紀錄消失。
 - **WSLg 中沒有聲音**：可能是 Windows 端的音訊轉送問題，不影響匯出結果，可以改到瀏覽器中測試。
-- **素材授權不明**：發布前把所有素材的來源與授權列在專案的說明檔中，這是好習慣。
+
+下一章學習如何讀錯誤與驗證規則：[12｜讀懂錯誤與除錯](../12-debugging/)。
 
 ## 對照可下載的階段專案
 
-上面的操作讓你練習手動建立節點；下載版用程式建立同樣職責的物件，節點在執行後才出現在 Remote 場景樹。請以遊戲行為對照，並用以下原始碼認識另一種組合方式。
+上面的操作讓你練習手動建立節點；下載版用程式建立同樣職責的物件，節點在執行後才出現在 Remote 場景樹。對照時以遊戲行為為準。
 
-<SourceExcerpt dimension="2d" stage="05-final" file="main" method="collect_item" />
+<SourceExcerpt dimension="2d" stage="05-final" file="main" method="build_background" />
+
+<SourceExcerpt dimension="2d" stage="05-final" file="main" method="save_best_time" />
+
+<SourceExcerpt dimension="2d" stage="05-final" file="player" method="update_trail" />
 
 ## 官方參考
 
-- 音訊匯流排：https://docs.godotengine.org/en/4.7/tutorials/audio/audio_buses.html
 - AudioStreamPlayer：https://docs.godotengine.org/en/4.7/classes/class_audiostreamplayer.html
-- Tween：https://docs.godotengine.org/en/4.7/classes/class_tween.html
-- 2D 粒子系統：https://docs.godotengine.org/en/4.7/tutorials/2d/particle_systems_2d.html
-- Web 匯出（音訊相關注意事項）：https://docs.godotengine.org/en/4.7/tutorials/export/exporting_for_web.html
+- CanvasItem shader 參考：https://docs.godotengine.org/en/4.7/tutorials/shaders/shader_reference/canvas_item_shader.html
+- CPUParticles2D：https://docs.godotengine.org/en/4.7/classes/class_cpuparticles2d.html
+- Camera2D：https://docs.godotengine.org/en/4.7/classes/class_camera2d.html
+- ConfigFile：https://docs.godotengine.org/en/4.7/classes/class_configfile.html
+- 資料路徑與 user://：https://docs.godotengine.org/en/4.7/tutorials/io/data_paths.html
+- Web 匯出（音訊與儲存注意事項）：https://docs.godotengine.org/en/4.7/tutorials/export/exporting_for_web.html

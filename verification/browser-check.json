@@ -4,175 +4,510 @@
     {
       "route": "",
       "width": 1440,
+      "theme": "light",
+      "applied_theme": "light",
       "status": 200,
       "overflow": false,
-      "diagram_clipping": []
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
     },
     {
       "route": "",
       "width": 768,
+      "theme": "light",
+      "applied_theme": "light",
       "status": 200,
       "overflow": false,
-      "diagram_clipping": []
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
     },
     {
       "route": "",
       "width": 390,
+      "theme": "light",
+      "applied_theme": "light",
       "status": 200,
       "overflow": false,
-      "diagram_clipping": []
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
     },
     {
       "route": "lessons/04-signals/",
       "width": 1440,
+      "theme": "light",
+      "applied_theme": "light",
       "status": 200,
       "overflow": false,
-      "diagram_clipping": []
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
     },
     {
       "route": "lessons/04-signals/",
       "width": 768,
+      "theme": "light",
+      "applied_theme": "light",
       "status": 200,
       "overflow": false,
-      "diagram_clipping": []
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
     },
     {
       "route": "lessons/04-signals/",
       "width": 390,
+      "theme": "light",
+      "applied_theme": "light",
       "status": 200,
       "overflow": false,
-      "diagram_clipping": []
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
     },
     {
       "route": "lessons/07-2d-movement/",
       "width": 1440,
+      "theme": "light",
+      "applied_theme": "light",
       "status": 200,
       "overflow": false,
-      "diagram_clipping": []
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
     },
     {
       "route": "lessons/07-2d-movement/",
       "width": 768,
+      "theme": "light",
+      "applied_theme": "light",
       "status": 200,
       "overflow": false,
-      "diagram_clipping": []
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
     },
     {
       "route": "lessons/07-2d-movement/",
       "width": 390,
+      "theme": "light",
+      "applied_theme": "light",
       "status": 200,
       "overflow": false,
-      "diagram_clipping": []
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
+    },
+    {
+      "route": "lessons/10-ui-state/",
+      "width": 1440,
+      "theme": "light",
+      "applied_theme": "light",
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
+    },
+    {
+      "route": "lessons/10-ui-state/",
+      "width": 768,
+      "theme": "light",
+      "applied_theme": "light",
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
+    },
+    {
+      "route": "lessons/10-ui-state/",
+      "width": 390,
+      "theme": "light",
+      "applied_theme": "light",
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
     },
     {
       "route": "lessons/15-3d-controller/",
       "width": 1440,
+      "theme": "light",
+      "applied_theme": "light",
       "status": 200,
       "overflow": false,
-      "diagram_clipping": []
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
     },
     {
       "route": "lessons/15-3d-controller/",
       "width": 768,
+      "theme": "light",
+      "applied_theme": "light",
       "status": 200,
       "overflow": false,
-      "diagram_clipping": []
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
     },
     {
       "route": "lessons/15-3d-controller/",
       "width": 390,
+      "theme": "light",
+      "applied_theme": "light",
       "status": 200,
       "overflow": false,
-      "diagram_clipping": []
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
+    },
+    {
+      "route": "lessons/17-3d-export/",
+      "width": 1440,
+      "theme": "light",
+      "applied_theme": "light",
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
+    },
+    {
+      "route": "lessons/17-3d-export/",
+      "width": 768,
+      "theme": "light",
+      "applied_theme": "light",
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
+    },
+    {
+      "route": "lessons/17-3d-export/",
+      "width": 390,
+      "theme": "light",
+      "applied_theme": "light",
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
     },
     {
       "route": "lessons/18-mcp/",
       "width": 1440,
+      "theme": "light",
+      "applied_theme": "light",
       "status": 200,
       "overflow": false,
-      "diagram_clipping": []
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
     },
     {
       "route": "lessons/18-mcp/",
       "width": 768,
+      "theme": "light",
+      "applied_theme": "light",
       "status": 200,
       "overflow": false,
-      "diagram_clipping": []
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
     },
     {
       "route": "lessons/18-mcp/",
       "width": 390,
+      "theme": "light",
+      "applied_theme": "light",
       "status": 200,
       "overflow": false,
-      "diagram_clipping": []
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
     },
     {
       "route": "prompts/",
       "width": 1440,
+      "theme": "light",
+      "applied_theme": "light",
       "status": 200,
       "overflow": false,
-      "diagram_clipping": []
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
     },
     {
       "route": "prompts/",
       "width": 768,
+      "theme": "light",
+      "applied_theme": "light",
       "status": 200,
       "overflow": false,
-      "diagram_clipping": []
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
     },
     {
       "route": "prompts/",
       "width": 390,
+      "theme": "light",
+      "applied_theme": "light",
       "status": 200,
       "overflow": false,
-      "diagram_clipping": []
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
     },
     {
       "route": "downloads/",
       "width": 1440,
+      "theme": "light",
+      "applied_theme": "light",
       "status": 200,
       "overflow": false,
-      "diagram_clipping": []
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
     },
     {
       "route": "downloads/",
       "width": 768,
+      "theme": "light",
+      "applied_theme": "light",
       "status": 200,
       "overflow": false,
-      "diagram_clipping": []
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
     },
     {
       "route": "downloads/",
       "width": 390,
+      "theme": "light",
+      "applied_theme": "light",
       "status": 200,
       "overflow": false,
-      "diagram_clipping": []
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
     },
     {
       "route": "play/",
       "width": 1440,
+      "theme": "light",
+      "applied_theme": "light",
       "status": 200,
       "overflow": false,
-      "diagram_clipping": []
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
     },
     {
       "route": "play/",
       "width": 768,
+      "theme": "light",
+      "applied_theme": "light",
       "status": 200,
       "overflow": false,
-      "diagram_clipping": []
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
     },
     {
       "route": "play/",
       "width": 390,
+      "theme": "light",
+      "applied_theme": "light",
       "status": 200,
       "overflow": false,
-      "diagram_clipping": []
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
+    },
+    {
+      "route": "",
+      "width": 1440,
+      "theme": "dark",
+      "applied_theme": "dark",
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
+    },
+    {
+      "route": "",
+      "width": 390,
+      "theme": "dark",
+      "applied_theme": "dark",
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
+    },
+    {
+      "route": "lessons/04-signals/",
+      "width": 1440,
+      "theme": "dark",
+      "applied_theme": "dark",
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
+    },
+    {
+      "route": "lessons/04-signals/",
+      "width": 390,
+      "theme": "dark",
+      "applied_theme": "dark",
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
+    },
+    {
+      "route": "lessons/07-2d-movement/",
+      "width": 1440,
+      "theme": "dark",
+      "applied_theme": "dark",
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
+    },
+    {
+      "route": "lessons/07-2d-movement/",
+      "width": 390,
+      "theme": "dark",
+      "applied_theme": "dark",
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
+    },
+    {
+      "route": "lessons/10-ui-state/",
+      "width": 1440,
+      "theme": "dark",
+      "applied_theme": "dark",
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
+    },
+    {
+      "route": "lessons/10-ui-state/",
+      "width": 390,
+      "theme": "dark",
+      "applied_theme": "dark",
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
+    },
+    {
+      "route": "lessons/15-3d-controller/",
+      "width": 1440,
+      "theme": "dark",
+      "applied_theme": "dark",
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
+    },
+    {
+      "route": "lessons/15-3d-controller/",
+      "width": 390,
+      "theme": "dark",
+      "applied_theme": "dark",
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
+    },
+    {
+      "route": "lessons/17-3d-export/",
+      "width": 1440,
+      "theme": "dark",
+      "applied_theme": "dark",
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
+    },
+    {
+      "route": "lessons/17-3d-export/",
+      "width": 390,
+      "theme": "dark",
+      "applied_theme": "dark",
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
+    },
+    {
+      "route": "lessons/18-mcp/",
+      "width": 1440,
+      "theme": "dark",
+      "applied_theme": "dark",
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
+    },
+    {
+      "route": "lessons/18-mcp/",
+      "width": 390,
+      "theme": "dark",
+      "applied_theme": "dark",
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
+    },
+    {
+      "route": "prompts/",
+      "width": 1440,
+      "theme": "dark",
+      "applied_theme": "dark",
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
+    },
+    {
+      "route": "prompts/",
+      "width": 390,
+      "theme": "dark",
+      "applied_theme": "dark",
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
+    },
+    {
+      "route": "downloads/",
+      "width": 1440,
+      "theme": "dark",
+      "applied_theme": "dark",
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
+    },
+    {
+      "route": "downloads/",
+      "width": 390,
+      "theme": "dark",
+      "applied_theme": "dark",
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
+    },
+    {
+      "route": "play/",
+      "width": 1440,
+      "theme": "dark",
+      "applied_theme": "dark",
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
+    },
+    {
+      "route": "play/",
+      "width": 390,
+      "theme": "dark",
+      "applied_theme": "dark",
+      "status": 200,
+      "overflow": false,
+      "diagram_clipping": [],
+      "unstyled_diagram_shapes": 0
     }
   ],
   "errors": [],
   "copy": true,
   "progress_persists": true,
+  "home_progress_dot": true,
+  "hero_tab_switch": true,
+  "unlock_badge": true,
   "search_results": 5,
   "mobile_navigation": true
 }

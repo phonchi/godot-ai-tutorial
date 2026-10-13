@@ -1,7 +1,7 @@
-# 3D 01-world
+# Floating Isles — 3D 01-world
 
-Open `project.godot` in Godot 4.7.2, then press F6 with `main.tscn` open or F5.
+A floating-island world: procedural sky, fog, glow, a warm sun with shadows, islands, trees and clouds.
 
-WASD / arrow keys: move. R: restart. Space: jump. Collect five spheres, then enter the teal exit.
+Open `project.godot` in Godot 4.7.2 and press F5. WASD / arrow keys / left stick: move. Space / gamepad A: jump. R / gamepad Back: restart.
 
-Procedural original graphics; no external assets. Generated collect sound is CC0. Code: MIT.
+All graphics are drawn in code. Code: MIT.

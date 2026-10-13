@@ -2,11 +2,11 @@
   {
     "game": "2d",
     "status": 200,
-    "changed_pixels_after_input": 9104,
+    "changed_pixels_after_input": 339670,
     "player_x": {
-      "before": 479.5,
-      "after": 622.5,
-      "restart": 479.5
+      "before": 480.6201413427562,
+      "after": 624.696269982238,
+      "restart": 480.6201413427562
     },
     "page_errors": [],
     "console_errors": []
@@ -14,7 +14,7 @@
   {
     "game": "3d",
     "status": 200,
-    "changed_pixels_after_input": 92321,
+    "changed_pixels_after_input": 286066,
     "player_x": null,
     "page_errors": [],
     "console_errors": []

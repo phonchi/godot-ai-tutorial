@@ -1,0 +1,8 @@
+---
+import Default from '@astrojs/starlight/components/PageTitle.astro';
+import {unlocks,glyphSvg} from '../data/unlocks';
+const slug=Astro.url.pathname.replace(/\/$/,'').split('/').pop();
+const unlock=Astro.url.pathname.includes('/lessons/')?unlocks.find(item=>item.slug===slug):undefined;
+---
+<Default />
+{unlock && <p class="unlock-badge"><Fragment set:html={glyphSvg(unlock.glyph)} />本章解鎖：{unlock.name}<span>· {unlock.detail}</span></p>}

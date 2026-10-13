@@ -1,6 +1,6 @@
 ---
-title: "17｜3D 匯出與效能：讓 3D 遊戲在瀏覽器中順暢執行"
-description: "把 3D 收集遊戲匯出到 Web，了解 Compatibility 繪圖器與 WebGL 2 的限制，用監視器與瀏覽器工具找出效能瓶頸，並完成兩款遊戲的最終檢查。"
+title: "17｜3D 遊戲（四）：巡邏敵人、重生點與 Web 匯出"
+description: "用 Path3D 與 PathFollow3D 做出沿路線滾動的刺球，碰到旗子更新重生點，加入標題畫面、計時、最佳紀錄與音效；最後說明 3D 匯出到 Web 時和 2D 不同的地方。"
 sidebar:
   order: 17
 ---
@@ -11,167 +11,181 @@ import SourceExcerpt from '../../../components/SourceExcerpt.astro';
 
 ## 學習目標
 
-1. 沿用第 13 章流程，把 3D 遊戲匯出為 Web 版本並在本機測試。
-2. 列出 3D 在 Web（WebGL 2、Compatibility 繪圖器）上的主要限制。
-3. 用 Godot 監視器與瀏覽器工具觀察影格率、繪製呼叫數等指標。
-4. 套用幾個對本課程規模最有效的優化：陰影、光源數量、材質共用、視窗解析度。
-5. 為 2D 與 3D 兩款遊戲完成最終的發布前檢查。
+1. 用 `Path3D`、`Curve3D`、`PathFollow3D` 讓刺球沿著路線來回巡邏。
+2. 在每個物理影格檢查刺球是否碰到玩家，碰到就送回重生點。
+3. 用旗子（重生點）記住最近的安全位置，並計算掉落次數。
+4. 加入標題畫面、計時器、最佳紀錄（`ConfigFile` 存到 `user://`）與音效，完成整款遊戲。
+5. 了解 3D 匯出到 Web 時與 2D 的差異，並用 headless 行為測試確認規則。
+
+完成後即為 3D 遊戲的最終版本，可與 3D 範例「04 final」階段對照，見 [下載頁](../../downloads/)，或到 [試玩頁](../../play/) 遊玩。
 
 ## 核心概念
 
-### 3D 在 Web 上為什麼比較吃力
+### PathFollow3D 不會自己走
 
-2D 遊戲即使沒有優化，在瀏覽器裡通常也很順暢。3D 則不同：
+`Path3D` 存放一條曲線（`Curve3D`），`PathFollow3D` 是它的子節點，代表「曲線上的某一點」。關鍵是：**`PathFollow3D` 不會自己動**，你要每格增加它的 `progress`（沿曲線走過的距離）：
 
-- 瀏覽器透過 WebGL 2 使用 GPU，額外的轉譯層會帶來負擔。
-- 引擎在 WebAssembly 中執行，CPU 端通常比原生版本慢。
-- 玩家的裝置差異很大，從高階桌機到內建顯示晶片的筆電都有。
+```gdscript
+func _physics_process(delta: float) -> void:
+	progress += speed * delta
+```
 
-所以「在編輯器中很順」不代表「在瀏覽器中很順」，一定要實際匯出測試。
+- `loop` 預設為開啟，走到終點會從頭開始。若曲線的終點和起點不同，敵人會「瞬移」回起點。所以建立曲線時，把**第一個點再加一次**到最後，形成封閉的路線。
+- `rotation_mode` 設為 `ROTATION_Y`，敵人只沿水平方向轉向，不會因為曲線高低而歪斜。
+- 敵人的外觀與碰撞放在 `PathFollow3D` 底下，就會跟著移動。
 
-<LessonDiagram kind="workflow" />
+在編輯器中，選取 `Path3D` 後可以直接在 3D 視窗點擊加點，畫出路線，很直觀。
 
-### Compatibility 繪圖器的取捨
+### 重生點：掉落不必整局重來
 
-本課程從第 1 章開始使用 Compatibility，讓編輯器與網頁使用相同的繪圖器；仍需實測光照、材質與縮放，不能保證每個裝置顯示完全一致。Compatibility 不支援的功能包括（以撰寫時的 4.x 為準，各版本持續改進中）：SDFGI、VoxelGI、體積霧、部分螢幕空間效果等。在第 14 章我們刻意只用方向光、基本材質與天空，就是為了避開這些差異。
+<LessonDiagram kind="respawn" />
 
-### 影響效能的主要因素
+前兩章掉下去都會回到起點。關卡變長以後，這會很挫折。做法是用一個 `respawn_point` 變數記住「最近的安全位置」：
 
-| 因素 | 說明 | 本課程的建議 |
-| --- | --- | --- |
-| 繪製呼叫（Draw Calls） | 每個網格、每個材質都可能是一次呼叫 | 相同外觀的物件共用材質 |
-| 即時陰影 | 陰影需要從光源角度額外繪製一次場景 | 只有一個方向光開陰影，調整陰影距離 |
-| 光源數量 | Compatibility 對每個物件可受影響的光源數有上限 | 主要用一個方向光加環境光 |
-| 解析度 | 像素越多，GPU 工作越多 | 必要時降低 3D 繪製比例 |
-| 腳本負擔 | 大量節點在 `_process` 中運算 | 本課程規模通常不是瓶頸 |
+- 碰到旗子：把 `respawn_point` 更新成旗子的位置，旗子換成薄荷綠，噴出粒子並播放音效。
+- 掉到 −10 以下或碰到刺球：呼叫 `respawn_player()`，把玩家放回 `respawn_point`、速度歸零、攝影機直接對準，掉落次數加 1。
+
+### 為什麼每格檢查碰撞
+
+`Area3D` 的 `body_entered` 只在「進入那一瞬間」觸發一次。刺球是會移動的，如果玩家剛好站在刺球的路線上，用訊號容易漏判。改成在主場景的 `_physics_process` 中逐一檢查 `patrol.hitbox.overlaps_body(player)`，規則更可靠。2D 篇的敵人也是用同樣的思路。
 
 ## 動手操作
 
-### 步驟 1：匯出 3D 遊戲
+### 步驟 1：巡邏路線
 
-在 3D 專案中依第 13 章建立 `Web` 匯出預設（關閉執行緒支援、路徑 `build/web/index.html`），然後：
+1. 在有寶珠的那座中段島上，加入 `Path3D`，命名 `PatrolPath1`。
+2. 選取它，在 3D 視窗上方工具列選「新增點」，沿著島面點出 4 個點圍成長方形，最後再點回第一個點附近，或在檢查器中把第一個點的座標複製到最後一點。
+3. 在 `PatrolPath1` 底下加入 `PathFollow3D`，`Rotation Mode` 選 `Y`。
+
+### 步驟 2：刺球
+
+1. 在 `PathFollow3D` 底下加入 `Area3D`，命名 `Hitbox`，位置 `(0, 0.55, 0)`。
+2. `Hitbox` 底下加入深紅色 `SphereMesh`（半徑 0.5）與 `SphereShape3D`（半徑 0.55）。
+3. 再加 8 根 `CylinderMesh` 當尖刺：`Top Radius` 設 0，就變成圓錐，沿著球的一圈排列。
+4. 對 `PathFollow3D` 附加腳本，每格增加 `progress`，並讓 `Hitbox` 繞 X 軸旋轉，看起來像在滾動。
+
+### 步驟 3：旗子
+
+1. 在中段島與終點島入口各放一根旗子：`Area3D` 底下有細長的旗桿方塊與一塊灰色旗面，旗面命名 `Cloth`。
+2. 碰撞盒 `(1.4, 2.2, 1.4)`，比旗子大一些，路過就會觸發。
+3. 旗子不要放在刺球的路線上，否則玩家一重生就又被撞到。
+
+### 步驟 4：主場景邏輯
+
+```gdscript
+func _physics_process(delta: float) -> void:
+	update_camera(delta)
+	if player.global_position.y < FALL_LIMIT:
+		respawn_player()
+	for patrol in patrols:
+		if patrol.hitbox.overlaps_body(player):
+			respawn_player()
+			break
+
+func activate_checkpoint(flag: Area3D) -> void:
+	var point := flag.position + Vector3(0, 0.75, 0)
+	if respawn_point.is_equal_approx(point):
+		return
+	respawn_point = point
+	var cloth: MeshInstance3D = flag.get_node("Cloth")
+	cloth.material_override = material(MINT)
+```
+
+`is_equal_approx()` 用來比較浮點數向量；同一面旗子重複碰到時直接返回，不會一直播放音效。
+
+`material(MINT)` 是回傳薄荷色 `StandardMaterial3D` 的小函式，`MINT` 是顏色常數，都要在 `main.gd` 自行宣告；完整版見本章末的對照原始碼。`patrols` 是存放所有 `PathFollow3D` 的陣列。
+
+下載版還在重生後給 0.5 秒保護時間（`respawn_grace`），期間不判定刺球接觸。傳送後的第一個物理影格，重疊資料可能還沒更新，沒有這段保護就可能連續重生兩次。
+
+### 步驟 5：標題、計時與最佳紀錄
+
+沿用第 10、11 章 2D 篇的做法：
+
+- 狀態有 `TITLE`、`PLAYING`、`WON` 三種。標題畫面按 Enter 或手把 Start 開始（`start` 動作在第 14 章已經建立）；按 R 重新開始時，用 `static var skip_title` 略過標題直接開始。
+- 只有 `PLAYING` 時累加 `elapsed`，畫面右上顯示時間。
+- 獲勝時若比最佳紀錄快，就用 `ConfigFile` 存到 `user://best.cfg`。讀取失敗（第一次玩）時回傳 −1，代表沒有紀錄。
+- 音效有收集、跳躍、開門、旗子、重生、勝利六種，headless 執行時跳過播放。
+
+## 程式碼解說
+
+- `curve.add_point(route[0])`：把起點再加一次，讓路線封閉，`loop` 時不會跳回起點。
+- `hitbox.rotate_x(-speed * delta / 0.5)`：滾動角度 = 移動距離 ÷ 半徑。球半徑 0.5，這樣轉速和移動速度一致，看起來不會「打滑」。
+- `respawn_player()` 裡呼叫 `snap_camera()`：重生是瞬移，攝影機也要瞬移，否則畫面會從深淵慢慢追上來，讓玩家看不清楚。
+- `falls` 只是計數，不會讓遊戲失敗。3D 版刻意不設生命數，讓初學者能專心體驗跳躍與探索；你可以在練習中自行加上。
+
+## 3D 匯出到 Web：和 2D 不同的地方
+
+匯出流程與第 13 章相同（Web 預設、關閉執行緒支援、用 HTTP 伺服器測試），這裡只說明 3D 要多注意的地方：
+
+| 項目 | 2D | 3D |
+| --- | --- | --- |
+| GPU 負擔 | 很輕 | 陰影、霧、光暈都要額外繪製 |
+| 陰影 | 通常沒有 | 只讓一個方向光開陰影；2 分割、最大距離 45 |
+| 粒子 | `CPUParticles2D` 很便宜 | `CPUParticles3D` 每顆粒子都是網格，數量要少 |
+| 單執行緒 | 幾乎沒有影響 | 物理、粒子、腳本共用同一條執行緒，越簡單越順 |
+| 存檔 | `user://` 存在瀏覽器的 IndexedDB | 同左；清除網站資料就會消失 |
+
+匯出前先在專案資料夾執行行為測試，確認規則沒有被改壞：
 
 ```bash
-cd ~/godot-projects/orb-collector-3d
-mkdir -p build/web
-godot --headless --path . --export-release "Web" build/web/index.html
-python3 -m http.server 8001 --directory build/web
+godot --headless --path . --script res://tests/behavior.gd
 ```
 
-用瀏覽器開啟 `http://localhost:8001`，完整玩一局：收集 5 個、進入出口、按 R 重開。
-
-### 步驟 2：觀察效能
-
-**在 Godot 編輯器中**：執行遊戲，切到除錯器的「監視器」分頁，勾選：
-
-- `Time → FPS`
-- `Rendering → Total Draw Calls in Frame`（名稱依版本可能略有不同）
-- `Rendering → Total Objects in Frame`
-
-**在瀏覽器中**：開發者工具的「效能」（Performance）分頁可以錄製幾秒並檢視每個影格的時間。也可以在遊戲中暫時加一個顯示 FPS 的 `Label`：
-
-```gdscript
-# 示範概念：在畫面上顯示 FPS（測試完記得移除或隱藏）
-extends Label
-
-func _process(_delta: float) -> void:
-	text = "FPS: %d" % Engine.get_frames_per_second()
-```
-
-把這個 `Label` 放在 HUD 中，匯出後在瀏覽器裡就能直接看到影格率。
-
-### 步驟 3：逐項優化並比較
-
-每次只改一項，重新匯出、記錄 FPS，才知道哪個改動有效：
-
-1. **陰影**：在 `DirectionalLight3D` 中把 `Directional Shadow → Max Distance` 從預設值調小到約 `40`（足以涵蓋場地），或在最低畫質選項中關閉陰影。
-2. **材質共用**：確認所有牆壁使用同一個材質資源（存成 `.tres`），而不是每面牆各一個。
-3. **3D 繪製比例**：專案設定 → 繪圖 → 縮放 3D → `Scale` 設為 `0.75`，3D 畫面以較低解析度繪製後放大，UI 仍保持清晰。Compatibility 繪圖器對 3D 縮放的支援是在 4.x 後續版本才加入，若設定後畫面沒有變化，請確認你的版本與官方文件。
-4. **視窗延展**：確認 `Stretch Mode` 與 `Aspect` 設定合理，避免在大螢幕上以過高解析度繪製。
-
-把結果記錄成表格，例如：
-
-```text
-改動                   | 桌機 Chrome FPS | 筆電 Firefox FPS
-原始                   | 60              | 38
-陰影距離 40            | 60              | 47
-3D 縮放 0.75           | 60              | 58
-```
-
-（上表為記錄格式示意，數字請填你自己的實測結果。）
-
-### 步驟 4：兩款遊戲的最終檢查
-
-| 項目 | 2D 要求 | 3D 要求 |
-| --- | --- | --- |
-| 移動 | WASD 與方向鍵 | WASD 與方向鍵 |
-| 收集目標 | 10 顆星即獲勝 | 5 個物件後出口開啟 |
-| 失敗或額外條件 | 受傷累計 3 次失敗 | 收滿才能進出口獲勝 |
-| 跳躍 | 不適用 | 空白鍵 |
-| R 重新開始 | 勝、負、進行中皆可 | 勝利、進行中皆可 |
-| Web 版 | 可遊玩、主控台無錯誤 | 可遊玩、主控台無錯誤 |
-| 文字與音效 | 中文正常、互動後有聲音 | 中文正常、互動後有聲音 |
-| 素材 | 原創或授權清楚 | 原創或授權清楚 |
-
-請把這張表複製到你的筆記中，依實際測試結果逐格打勾，任何一項不通過都回到對應章節修正。
-
-## 程式碼解說：提供畫質選項
-
-```gdscript
-# 示範概念：依畫質選項調整陰影與 3D 縮放
-func apply_quality(low: bool) -> void:
-	var sun := $DirectionalLight3D as DirectionalLight3D
-	sun.shadow_enabled = not low
-	get_viewport().scaling_3d_scale = 0.6 if low else 1.0
-```
-
-- `shadow_enabled`：直接開關即時陰影，是 3D 中最有感的效能選項之一。
-- `get_viewport().scaling_3d_scale`：執行時調整 3D 繪製比例，等同專案設定中的縮放選項。
-- 把這個函式接到 HUD 上的一個按鈕，或在 Web 版啟動時預設為低畫質，讓較弱的裝置也能遊玩。
+看到 `BEHAVIOR CHECKS: PASS` 再匯出。匯出後在瀏覽器完整玩一局，並打開開發者工具的主控台確認沒有錯誤；若畫面不順，依序嘗試關閉陰影、降低 3D 繪製比例（`get_viewport().scaling_3d_scale`）。
 
 ## 交給 agent 的提示詞
 
 <AgentTask
-  title="3D Web 效能檢查（不改檔）"
-  prompt={`這是 Godot 4.x GDScript 3D 專案，準備匯出到 Web。請先不要修改任何檔案。
-1. 讀取 project.godot，回報繪圖器、3D 縮放、視窗延展設定。
-2. 讀取主場景 .tscn，列出所有光源與其陰影設定，以及有多少個不同的材質資源、哪些物件可以共用材質。
-3. 執行 godot --headless --path . --export-release "Web" build/web/index.html，回報結果與 build/web 中各檔案大小。
-4. 依你的發現，提出最多三項最可能提升 Web 效能的修改，說明預期影響與如何測量。
-5. 提醒我：headless 匯出成功不代表瀏覽器中的效能或畫面正確，列出我在瀏覽器中要做的測試。`}
+  title="新增第三隻巡邏刺球並驗證"
+  prompt={`這是 Godot 4.7 的 3D 專案（Compatibility、單執行緒 Web 匯出）。主場景 scripts/main.gd 的 PATROL_ROUTES 陣列定義巡邏路線，build_patrols() 用 Path3D + PathFollow3D 建立刺球，scripts/patrol_enemy.gd 每格增加 progress。tests/behavior.gd 是 headless 行為測試。
+任務：在第二座島（ISLANDS 陣列第 3 項）上新增一條巡邏路線，刺球速度比其他刺球慢。
+要求：
+1. 先讀 main.gd、patrol_enemy.gd，提出路線座標，說明它如何避開寶珠位置與旗子位置（FLAG_POINTS），等我同意。
+2. 只修改 PATROL_ROUTES；如需不同速度，說明你會怎麼傳入而不影響其他刺球。
+3. 執行 godot --headless --path . --script res://tests/behavior.gd，貼出最後 30 行。
+4. 執行 godot --headless --path . --quit-after 240 2>&1 | tail -n 20，確認沒有錯誤或警告。
+5. 說明 headless 測試無法確認的項目（刺球外觀、路線是否好閃避），列出我要實際遊玩檢查的地方。`}
 />
 
 ## 自我檢查
 
-- [ ] 3D 遊戲在瀏覽器中可以完整玩一局。
-- [ ] 我記錄了至少兩項優化前後的 FPS。
-- [ ] 所有牆壁與地板共用少數幾個材質資源。
-- [ ] 兩款遊戲的最終檢查表全部通過。
+- [ ] 刺球沿著封閉路線持續滾動，不會跳回起點，滾動方向和移動方向一致。
+- [ ] 碰到刺球會回到最近的重生點，掉落次數加 1。
+- [ ] 碰到旗子時旗面變成薄荷綠；之後掉下去會回到這面旗子，而不是起點。
+- [ ] 標題畫面按 Enter 開始；按 R 重新開始時直接進入遊戲。
+- [ ] 獲勝畫面顯示時間與最佳紀錄，重新開始後最佳紀錄仍在。
+- [ ] `res://tests/behavior.gd` 顯示 `BEHAVIOR CHECKS: PASS`，Web 版主控台沒有錯誤。
 
 ## 練習
 
-1. 在 HUD 加入「畫質：高／低」切換按鈕，呼叫 `apply_quality()`，在瀏覽器中比較差異。
-2. 用 `OS.has_feature("web")` 讓 Web 版預設使用低畫質，桌面版預設高畫質。
-3. 另外建立一個 Linux 桌面匯出預設，比較同一台電腦上桌面版與 Web 版的 FPS。
+1. 讓刺球在路線轉角停頓 0.5 秒（提示：記錄上一格的方向，方向改變時暫停增加 `progress`）。
+2. 加入生命數：掉落 5 次就顯示「GAME OVER」，並在 HUD 用寶珠圖示表示剩餘生命。
+3. 匯出到 Web 後，分別在開啟與關閉陰影的情況下記錄 FPS，填成表格比較。
 
 ## 常見錯誤與限制
 
-- **瀏覽器中畫面全黑但有聲音**：可能是瀏覽器停用了硬體加速或 WebGL 2。到瀏覽器設定開啟硬體加速，或換瀏覽器測試。
-- **陰影有鋸齒或閃爍**：調整陰影的 `Bias` 與 `Max Distance`；陰影距離越短，品質越好。
-- **在 WSLg 中測得的 FPS 偏低**：WSLg 的 GPU 轉送有額外負擔，編輯器中的 FPS 不代表玩家在瀏覽器中的體驗。以 Windows 瀏覽器開啟本機伺服器測試較準確。
-- **FPS 一直是 60**：通常是垂直同步限制在螢幕更新率，代表效能足夠，不是問題。
-- **只在一台電腦上測試**：至少用一台效能較弱的裝置測試，才知道優化是否足夠。
+- **刺球不動**：忘了在 `_physics_process` 增加 `progress`，或 `PathFollow3D` 不是 `Path3D` 的子節點。
+- **刺球走到終點瞬移回起點**：曲線沒有封閉，把第一個點再加到最後。
+- **刺球歪斜或翻倒**：`rotation_mode` 不是 `Y`，曲線有高低時整個節點會傾斜。
+- **重生後立刻又被撞**：旗子放在巡邏路線上，或重生點離路線太近。
+- **最佳紀錄在 Web 版消失**：瀏覽器的無痕模式或清除網站資料會清空 IndexedDB；程式要在讀取失敗時仍能正常遊玩。
+- **Web 版很卡**：3D 陰影與粒子數量是主要原因，先降低這兩項再找其他問題。
 
 ## 對照可下載的階段專案
 
-上面的操作讓你練習手動建立節點；下載版用程式建立同樣職責的物件，節點在執行後才出現在 Remote 場景樹。請以遊戲行為對照，並用以下原始碼認識另一種組合方式。
+上面的操作讓你練習手動建立節點；下載版用程式建立同樣職責的物件，節點在執行後才出現在 Remote 場景樹。對照時以遊戲行為為準。
 
-<SourceExcerpt dimension="3d" stage="03-final" file="main" method="update_camera" />
+<SourceExcerpt dimension="3d" stage="04-final" file="patrol_enemy" />
+
+<SourceExcerpt dimension="3d" stage="04-final" file="main" method="respawn_player" />
+
+<SourceExcerpt dimension="3d" stage="04-final" file="main" method="activate_checkpoint" />
 
 ## 官方參考
 
-- 匯出至 Web：https://docs.godotengine.org/en/4.7/tutorials/export/exporting_for_web.html
+- Path3D：https://docs.godotengine.org/en/4.7/classes/class_path3d.html
+- PathFollow3D：https://docs.godotengine.org/en/4.7/classes/class_pathfollow3d.html
+- Curve3D：https://docs.godotengine.org/en/4.7/classes/class_curve3d.html
+- ConfigFile：https://docs.godotengine.org/en/4.7/classes/class_configfile.html
+- 匯出到 Web：https://docs.godotengine.org/en/4.7/tutorials/export/exporting_for_web.html
 - 繪圖器比較：https://docs.godotengine.org/en/4.7/tutorials/rendering/renderers.html
-- 效能優化總覽：https://docs.godotengine.org/en/4.7/tutorials/performance/index.html
-- 3D 解析度縮放：https://docs.godotengine.org/en/4.7/tutorials/3d/resolution_scaling.html
-- 光源與陰影：https://docs.godotengine.org/en/4.7/tutorials/3d/lights_and_shadows.html

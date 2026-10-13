@@ -71,11 +71,11 @@ Can't change this state while flushing queries. Use call_deferred() or set_defer
 
 ```gdscript
 # 示範概念：不同等級的輸出
-func _on_star_collected() -> void:
-	print("收集前：", stars_collected)                  # 一般資訊
-	if stars_collected > STARS_TO_WIN:
-		push_warning("星星數超過目標：%d" % stars_collected)  # 黃色警告，會進入除錯器
-	assert(state == GameState.PLAYING, "非進行中卻收到星星")  # 只在除錯版中檢查
+func collect_item(star: Area2D) -> void:
+	print("收集前：", score, " 本波：", wave_collected)     # 一般資訊
+	if score > TARGET:
+		push_warning("星星數超過目標：%d" % score)          # 黃色警告，會進入除錯器
+	assert(state == State.PLAYING, "非進行中卻收到星星")  # 只在除錯版中檢查
 ```
 
 - `print`：臨時觀察用，修好後記得移除，避免輸出被淹沒。
@@ -113,23 +113,35 @@ godot --path . --headless --quit-after 600 2>&1 | tee /tmp/godot-run.log | tail 
 
 `tee` 會把完整輸出存到檔案，同時在畫面顯示最後 60 行。agent 可以讀 `/tmp/godot-run.log` 取得完整內容。但要記得：**很多 bug 只在特定操作後出現**，headless 執行不會有人按鍵，這類 bug 不會出現在日誌中。這時要由你操作重現，再把編輯器除錯器中的錯誤訊息複製給 agent。
 
+### 步驟 7：用行為測試驗證規則
+
+下載的完成品附有 `tests/behavior.gd`。它不開視窗，直接載入 `main.tscn`，用程式模擬「開始遊戲、衝刺、被追蹤者碰到、收完三個波次、重新開始」，逐條檢查規則：
+
+```bash
+godot --headless --path . --script res://tests/behavior.gd 2>&1 | tail -n 30
+```
+
+每一條規則印出一行 `ok` 或 `FAIL`，最後一行是 `BEHAVIOR CHECKS: PASS (0 failures)`。這補上了 headless 日誌的盲點：沒有人按鍵，測試會自己呼叫 `start_game()`、`collect_item()`、`damage_player()`，並等待真正的物理影格。請 agent 修改規則時，把「執行這個測試並貼出結果」寫進要求，比只看「沒有錯誤訊息」可靠得多。
+
+測試也有界線：它驗證的是規則與數值，看不到顏色、動畫是否好看，也聽不到聲音。這些仍然要你在視窗中確認。
+
 ## 程式碼解說：一份好的 bug 描述
 
 ```text
 重現步驟：
-1. 執行主場景
-2. 收集 9 顆星
-3. 在受傷 2 次的狀態下，同時碰到最後一顆星與障礙物
+1. 執行主場景，按 Enter 開始
+2. 打到第 3 波，收集到 9 顆星
+3. 只剩 1 顆心時，同時碰到最後一顆星與追蹤者
 
-預期：顯示獲勝
-實際：顯示失敗，HUD 顯示星星 10 / 10、受傷 3 / 3
+預期：顯示 YOU WIN!
+實際：顯示 GAME OVER，HUD 顯示星星 10 / 10、愛心全空
 
 錯誤訊息：無
-相關檔案：main.gd（_on_star_collected、_on_hazard_hit_player）
-已嘗試：在兩個函式開頭 print state，兩者都印出 PLAYING
+相關檔案：scripts/main.gd（collect_item、damage_player、end_game）
+已嘗試：在兩個函式開頭 print state，兩者都印出 PLAYING（數值 1）
 ```
 
-這份描述讓 agent 不必猜：它知道怎麼重現、哪裡不對、哪些可能性已經排除。對照第 10 章，你會發現這個 bug 的成因是同一影格內兩個事件都通過了狀態檢查，問題不在單一函式，而在「誰先發生」的設計決策。
+這份描述讓 agent 不必猜：它知道怎麼重現、哪裡不對、哪些可能性已經排除。對照第 10 章，你會發現這個 bug 的成因是同一影格內兩個事件都通過了 `is_playing()` 的檢查，問題不在單一函式，而在「誰先發生」的設計決策。
 
 ## 交給 agent 的提示詞
 
@@ -141,7 +153,7 @@ godot --path . --headless --quit-after 600 2>&1 | tee /tmp/godot-run.log | tail 
 1. 閱讀相關檔案，提出最多三個可能原因，依可能性排序，並說明每個原因的證據。
 2. 對最可能的原因，告訴我可以加在哪一行的 print 或中斷點來證實，以及我應該看到什麼輸出。
 3. 等我回報驗證結果後，再提出最小修改方案。
-4. 修改方案中說明如何確認原本正常的功能（收集、受傷、重開）沒有被影響。`}
+4. 修改方案中說明如何確認原本正常的功能（收集、受傷、波次、重開）沒有被影響；若專案有 tests/behavior.gd，修改後執行 godot --headless --path . --script res://tests/behavior.gd 並貼出結果。`}
 />
 
 ## 自我檢查
@@ -149,12 +161,12 @@ godot --path . --headless --quit-after 600 2>&1 | tee /tmp/godot-run.log | tail 
 - [ ] 看到錯誤時，我能從除錯器中點到出錯的那一行。
 - [ ] 我會設定中斷點並查看當下的變數值。
 - [ ] 我會在執行中切到遠端場景樹檢查節點狀態。
-- [ ] 我知道 headless 日誌抓不到「需要操作才會發生」的 bug。
+- [ ] 我知道 headless 日誌抓不到「需要操作才會發生」的 bug，也會執行 `tests/behavior.gd` 驗證規則。
 - [ ] 我能把一個 bug 寫成四段式描述。
 
 ## 練習
 
-1. 故意把 HUD 中某個 `Label` 改名，執行遊戲，從錯誤訊息找回是哪一行出錯，再修正。
+1. 故意把 `start_wave()` 中的 `WAVES[index]` 改成 `WAVES[index + 1]`，執行行為測試，從錯誤訊息與 `FAIL` 行找回是哪一行出錯，再修正。
 2. 在星星的碰撞回呼中直接寫 `monitoring = false`（不用 `set_deferred`），觀察錯誤訊息，再改回正確寫法。
 3. 用監視器觀察：連續重開遊戲 10 次，節點數量是否穩定？
 4. 為本頁「程式碼解說」中的 bug 決定一個規則（例如「同一影格先處理收集」），請 agent 依規則修正並提供驗證方式。

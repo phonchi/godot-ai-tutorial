@@ -1,6 +1,6 @@
 ---
-title: "10｜2D 遊戲（四）：UI 與遊戲狀態"
-description: "用 CanvasLayer 製作固定在畫面上的 HUD，顯示星星與受傷次數；用列舉管理「進行中、獲勝、失敗」三種狀態，搭配結果面板、暫停與 R 重新開始。"
+title: "10｜2D 遊戲（四）：遊戲狀態、波次與 HUD"
+description: "把散落的布林旗標整理成 TITLE、PLAYING、WON、LOST 四種狀態；用資料表定義三個波次；再用 CanvasLayer 與自訂 _draw() 做出愛心、波次燈號、星星數與計時器的 HUD。"
 sidebar:
   order: 10
 ---
@@ -11,181 +11,246 @@ import SourceExcerpt from '../../../components/SourceExcerpt.astro';
 
 ## 學習目標
 
-1. 用 `CanvasLayer` 與 `Control` 節點建立不受鏡頭影響的 HUD。
-2. 用容器（Container）與錨點（Anchor）讓 UI 在不同視窗大小下都在正確位置。
-3. 把散落的 `print` 換成畫面上的「星星 x / 10」「受傷 x / 3」。
-4. 用 `enum` 建立遊戲狀態機，集中處理狀態切換，避免「已經贏了還會受傷」這類錯誤。
-5. 在獲勝或失敗時顯示結果面板，並暫停遊戲世界但保留 R 重開的功能。
+到上一章為止，「星星花園」已經能收集、受傷與分出勝負，但規則靠 `finished`、`won` 兩個布林值撐著，畫面上也只有一行文字。本章把它整理成一款完整的小遊戲：
 
-本章對應 2D 範例的「04 interface」階段，見 [下載頁](../../downloads/)。
+1. 把 `finished`、`won` 換成一個 `enum State { TITLE, PLAYING, WON, LOST }`，並用 `is_playing()` 統一檢查。
+2. 加入標題畫面：按 Enter 或手把 A 才開始。
+3. 用 `WAVES` 資料表定義三個波次（星星 3／3／4 顆，敵人逐波變多變快），收完一波後停 0.8 秒再進入下一波。
+4. 用 `CanvasLayer` 加上自訂 `Control`，在 `_draw()` 裡畫出愛心、波次燈號、星星數與計時器。
+5. 用 `Tween` 讓「WAVE 2」橫幅從上方滑入，再淡出。
+
+本章對應 2D 範例的「04 interface」階段，見 [下載頁](../../downloads/)。最佳紀錄的存檔留到下一章。
 
 ## 核心概念
 
-### CanvasLayer：畫在另一層
+### 為什麼要從布林值改成狀態
 
-主場景中的節點會跟著 `Camera2D` 移動。HUD 必須固定在螢幕上，所以把 UI 放在 `CanvasLayer` 底下，它有自己的繪製層，不受遊戲鏡頭影響，且預設畫在遊戲世界上方。
+第 9 章用兩個布林值描述遊戲：`finished` 表示「結束了沒」，`won` 表示「贏了沒」。加入標題畫面後，至少要再多一個 `started`。三個布林值可以組出 8 種組合，其中很多沒有意義，例如「還沒開始卻已經贏了」。
 
-### 狀態機：同一時間只有一種狀態
+改用 `enum` 後，遊戲在任何時刻都**只會處於一種狀態**，不可能出現矛盾的組合：
 
-目前程式中的獲勝與失敗是分散判斷的，可能出現這些問題：獲勝後碰到障礙物仍然扣次數、失敗後還能撿星星。把遊戲整體狀態集中成一個變數，每個事件處理前先檢查狀態，就能一次解決。
+```gdscript
+enum State { TITLE, PLAYING, WON, LOST }
+var state: State = State.TITLE
+```
 
-<LessonDiagram kind="state" />
+所有「現在可以動作嗎？」的判斷都交給同一個函式：
+
+```gdscript
+func is_playing() -> bool:
+	return state == State.PLAYING
+```
+
+收集星星、受傷、計時都先問 `is_playing()`。這種寫在函式開頭、不符合就直接 `return` 的檢查，叫做守衛條件（guard clause）。之後要加「暫停」狀態，也只需要改這一個地方。
+
+<LessonDiagram kind="waves" />
 
 | 目前狀態 | 事件 | 下一個狀態 |
 | --- | --- | --- |
-| PLAYING | 星星數達到 10 | WON |
-| PLAYING | 受傷次數達到 3 | LOST |
-| WON 或 LOST | 按 R | 重新載入場景，回到 PLAYING |
-| WON 或 LOST | 碰到星星或障礙 | 忽略 |
+| TITLE | 按 Enter／A | PLAYING（開始第 1 波） |
+| PLAYING | 收完本波星星，且不是最後一波 | 仍是 PLAYING，0.8 秒後下一波 |
+| PLAYING | 收完第 3 波 | WON |
+| PLAYING | 生命歸零 | LOST |
+| 任何狀態 | 按 R／手把 Back | 重新載入場景，直接回到 PLAYING |
+
+波次間的短暫停頓不必另設一個狀態：遊戲仍在進行，只是暫時沒有敵人，用計時器處理就好。狀態越少，狀態表越容易讀懂。
+
+### 用資料描述關卡
+
+三個波次的差別只有數字，所以不必寫三段程式，用一張表就好：
+
+```gdscript
+const WAVES: Array[Dictionary] = [
+	{"stars": 3, "chasers": 1, "bouncers": 1, "chaser_speed": 120.0},
+	{"stars": 3, "chasers": 2, "bouncers": 1, "chaser_speed": 145.0},
+	{"stars": 4, "chasers": 3, "bouncers": 2, "chaser_speed": 170.0},
+]
+```
+
+想調整難度時只改這張表，`start_wave()` 不用動。這也是交給 agent 時很好描述的修改範圍。
+
+### HUD 放在 CanvasLayer
+
+遊戲世界的節點會受 `Camera2D` 影響（下一章加入的畫面震動就會移動鏡頭）。HUD 必須固定在螢幕上，所以放在 `CanvasLayer` 底下，它有獨立的繪製層，畫在遊戲世界上方。
+
+HUD 有兩種做法：用 `Label`、`HBoxContainer` 等 UI 節點排版，或者用一個 `Control` 在 `_draw()` 裡直接畫。愛心、燈號這類圖形用 `_draw()` 畫最直接；大段文字的面板則交給 `Label` 與 `PanelContainer`，因為它們會自動換行與排版。下載版兩種都有用到。
 
 ## 動手操作
 
-### 步驟 1：建立 HUD 場景
+以下延續第 9 章自己的專案。若想直接從對照專案接續，可以下載「03 hazards」。
 
-1. 新增場景，根節點 `CanvasLayer`，命名 `HUD`，存成 `hud.tscn`。
-2. 加入 `MarginContainer`，在 2D 視窗上方工具列的「錨點預設」選「全矩形」（Full Rect），在檢查器 `Theme Overrides → Constants` 把四邊邊距設為 `16`。
-3. 在 `MarginContainer` 底下加 `HBoxContainer`，再加兩個 `Label`，分別命名 `StarsLabel` 與 `HitsLabel`。
-4. 對 `HBoxContainer` 設定 `Size Flags Vertical` 為 `Shrink Begin`，讓它貼在上方。
-5. 在 `HUD` 下另加一個 `PanelContainer`，命名 `ResultPanel`，錨點選「置中」（Center），裡面放 `VBoxContainer`，再放兩個 `Label`：`ResultLabel` 與 `HintLabel`（文字「按 R 重新開始」）。預設把 `ResultPanel` 的 `Visible` 取消勾選。
+### 步驟 1：把旗標換成狀態
 
-### 步驟 2：HUD 腳本只負責「顯示」
+1. 在 `main.gd` 刪掉 `finished` 與 `won`，加入上面的 `enum State` 與 `state` 變數。
+2. 加入 `is_playing()`，把 `collect_item()`、`damage_player()` 開頭的 `if finished: return` 都改成 `if not is_playing(): return`。
+3. 把原本的 `end_game(won_game)` 改為設定狀態：
 
 ```gdscript
-# 示範概念：HUD 只負責把數值顯示出來
-extends CanvasLayer
-
-@onready var stars_label: Label = %StarsLabel
-@onready var hits_label: Label = %HitsLabel
-@onready var result_panel: PanelContainer = %ResultPanel
-@onready var result_label: Label = %ResultLabel
-
-func update_stars(collected: int, goal: int) -> void:
-	stars_label.text = "星星 %d / %d" % [collected, goal]
-
-func update_hits(hits: int, max_hits: int) -> void:
-	hits_label.text = "受傷 %d / %d" % [hits, max_hits]
-
-func show_result(message: String) -> void:
-	result_label.text = message
-	result_panel.show()
+# 示範概念：結束時只改狀態，畫面交給 HUD
+func end_game(won_game: bool) -> void:
+	state = State.WON if won_game else State.LOST
+	player.set_physics_process(false) # 和第 8、9 章一樣，停止玩家的物理更新
+	for enemy in enemies:
+		enemy.set_physics_process(false)
+	show_result(won_game)
 ```
 
-這裡用 `%` 唯一名稱存取，請在場景面板對四個節點按右鍵勾選「以唯一名稱存取」。把 `hud.tscn` 拖進 `main.tscn`。
+`show_result()` 是新函式，負責在結算面板顯示「YOU WIN!／GAME OVER」與時間。面板要到步驟 4 才做，先寫成 `func show_result(won_game: bool) -> void: print("勝利" if won_game else "失敗")`，之後再補上面板。
 
-### 步驟 3：主場景的狀態機
+### 步驟 2：加入標題畫面與開始動作
 
-把第 8、9 章的判斷整理成：
-
-```gdscript
-# 示範概念：集中管理遊戲狀態
-extends Node2D
-
-enum GameState { PLAYING, WON, LOST }
-
-const STARS_TO_WIN := 10
-const MAX_HITS := 3
-
-var state := GameState.PLAYING
-var stars_collected := 0
-var hits := 0
-
-@onready var hud = $HUD  # 刻意不標型別，見下方解說
-
-func _ready() -> void:
-	# 連接星星與障礙訊號的程式同第 8、9 章，此處省略
-	hud.update_stars(stars_collected, STARS_TO_WIN)
-	hud.update_hits(hits, MAX_HITS)
-
-func _on_star_collected() -> void:
-	if state != GameState.PLAYING:
-		return
-	stars_collected += 1
-	hud.update_stars(stars_collected, STARS_TO_WIN)
-	if stars_collected >= STARS_TO_WIN:
-		_change_state(GameState.WON)
-
-func _change_state(new_state: GameState) -> void:
-	state = new_state
-	match state:
-		GameState.WON:
-			hud.show_result("你贏了！")
-			get_tree().paused = true
-		GameState.LOST:
-			hud.show_result("失敗了……")
-			get_tree().paused = true
-```
-
-受傷處理也一樣：先檢查 `state`，增加次數、更新 HUD，到達上限時呼叫 `_change_state(GameState.LOST)`。
-
-### 步驟 4：暫停與 Process Mode
-
-`get_tree().paused = true` 會停止所有節點的處理，包括主場景本身的 `_unhandled_input`，這樣按 R 就沒反應了。解法是設定節點的 `Process Mode`：
-
-1. 選取 `Main` 根節點，在檢查器 `Process → Mode` 設為 `Always`。
-2. 但這樣子節點預設會繼承「Always」，玩家也不會暫停。所以要把玩家、星星、障礙物所在的節點設為 `Pausable`。最簡單的做法是把遊戲物件都放在一個 `Node2D` 叫 `World` 底下，把 `World` 設為 `Pausable`。
-3. `HUD` 保持繼承即可。
-
-重新載入場景前要解除暫停，否則新場景一開始就是暫停的：
+1. 開啟「專案 → 專案設定 → 輸入對應」，新增動作 `start`，綁定 Enter 與手把的 A 鍵（Joypad Button 0）。
+2. `_ready()` 最後改成呼叫 `show_title()`：把 `state` 設為 `TITLE`、用 `player.set_physics_process(false)` 停用玩家、顯示標題面板；`start_game()` 再用 `set_physics_process(true)` 恢復。下載版改在 `player.gd` 加了 `enabled` 旗標，效果相同，但能讓衝刺計時在停用時一併歸零。
+3. 在 `_unhandled_input()` 處理開始：
 
 ```gdscript
+# 示範概念：只有在標題畫面時 start 才有作用
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("restart"):
-		get_tree().paused = false
-		get_tree().reload_current_scene()
+		restart_game()
+	elif state == State.TITLE and event.is_action_pressed("start"):
+		start_game()
 ```
+
+4. 重開時不想再看一次標題，可以在 `main.gd` 宣告 `static var skip_title: bool = false`。`static var` 屬於腳本本身，重新載入場景後仍會保留；`restart_game()` 先把它設為 `true` 再 `reload_current_scene()`，`_ready()` 看到它就直接 `start_game()`。
+
+這三個都是新函式。標題面板要到步驟 4 做好 HUD 才有，先用 `print()` 代替：
+
+```gdscript
+# 示範概念：標題、開始與重開（新函式）
+static var skip_title: bool = false
+
+func show_title() -> void:
+	state = State.TITLE
+	player.set_physics_process(false)
+	print("按 Enter 或手把 A 開始")  # 步驟 4 後改成顯示標題面板
+
+func start_game() -> void:
+	state = State.PLAYING
+	player.set_physics_process(true)
+	start_wave(0)  # 步驟 3 才建立；在那之前先把這行註解掉
+
+func restart_game() -> void:
+	skip_title = true
+	get_tree().reload_current_scene()
+```
+
+`_ready()` 最後改成 `if skip_title: start_game()`，否則 `show_title()`。原本 `_unhandled_input()` 裡的 `get_tree().reload_current_scene()` 換成呼叫 `restart_game()`。
+
+### 步驟 3：波次
+
+1. 把第 9 章「一開始就放 10 顆星星」改成由 `start_wave(index)` 產生該波的星星與敵人。
+2. `collect_item()` 除了加總分，也累計 `wave_collected`；收滿本波數量就呼叫 `finish_wave()`。
+3. `finish_wave()` 若是最後一波就 `end_game(true)`；否則清掉敵人，用場景樹計時器等 0.8 秒：
+
+```gdscript
+get_tree().create_timer(0.8).timeout.connect(next_wave)
+```
+
+4. `next_wave()` 先再確認一次 `is_playing()`，才呼叫 `start_wave(wave_index + 1)`。
+
+這裡刻意把 `timeout` 連到**方法** `next_wave`，而不是寫成 lambda。0.8 秒內玩家可能按 R 重開，舊場景會被釋放；連到方法的訊號在物件釋放時會自動斷開，計時器到期時就不會呼叫已經不存在的物件。lambda 則會捕捉舊的 `self`，可能在錯誤時機執行。
+
+### 步驟 4：HUD
+
+1. 在主場景新增 `CanvasLayer`，命名 `HUD`。
+2. 在底下加入 `Control`，附加新腳本 `res://scripts/hud.gd`。在 2D 工作區上方的錨點預設選「全矩形」（Full Rect），並把 `Mouse → Filter` 設為 `Ignore`，避免 HUD 攔截滑鼠點擊。
+3. `hud.gd` 宣告 `lives`、`stars`、`wave`、`time` 等變數。主場景每次數值改變就寫入，再呼叫 `hud.queue_redraw()`，HUD 的 `_draw()` 便會用新數字重畫：
+
+```gdscript
+# 示範概念：HUD 只負責把數字畫出來
+func _draw() -> void:
+	var font := get_theme_default_font()
+	draw_rect(Rect2(0, 0, 960, 64), Color(INK, 0.6))
+	for i in max_lives:
+		draw_heart(Vector2(40 + i * 40, 33), i < lives)
+	draw_string(font, Vector2(246, 42), "%d / %d" % [stars, stars_target], HORIZONTAL_ALIGNMENT_LEFT, -1, 26, CREAM)
+	draw_string(font, Vector2(720, 42), format_time(time), HORIZONTAL_ALIGNMENT_RIGHT, 216, 26, CREAM)
+```
+
+上面的 `INK`、`CREAM` 顏色常數，`max_lives`、`stars_target` 變數，以及 `format_time()`、`draw_heart()` 兩個函式都要在 `hud.gd` 自行宣告；完整版見本章末的對照原始碼。
+
+4. 在 `HUD` 下再加一個 `PanelContainer`，裡面放 `VBoxContainer` 與兩個 `Label`，做為標題與結算面板。在檢查器的 `Theme Overrides → Styles → Panel` 新增 `StyleBoxFlat`，設定背景色、圓角與邊框，面板就不再是預設的灰框。
+5. 計時器只在進行中累加：在主場景的 `_process()` 寫 `if is_playing(): elapsed += delta`。
+
+### 步驟 5：波次橫幅
+
+在 HUD 加一個 `Label` 當橫幅，用 `Tween` 依序做三件事：滑入、停留、淡出。
+
+```gdscript
+# 示範概念：Tween 預設依序執行
+var tween := create_tween()
+tween.tween_property(banner, "position:y", 250.0, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+tween.tween_interval(0.6)
+tween.tween_property(banner, "modulate:a", 0.0, 0.3)
+```
+
+`TRANS_BACK` 配合 `EASE_OUT` 會讓橫幅稍微衝過頭再彈回，比直線移動更有活力。
 
 ## 程式碼解說
 
-- **HUD 只顯示，不判斷**：HUD 不知道勝負規則，只提供 `update_stars`、`show_result` 這類函式。規則全部在主場景。之後要換 UI 外觀，不會動到遊戲邏輯。
-- **`_change_state` 是唯一修改狀態的地方**：所有「進入獲勝」「進入失敗」要做的事情都集中在這裡，不會散落各處。
-- **事件開頭的 `if state != GameState.PLAYING: return`**：這一行就是防止「贏了還受傷」的關鍵，稱為守衛條件（guard clause）。
-- **`@onready var hud = $HUD`**：`$HUD` 的靜態型別只是一般節點，若寫成 `:=` 讓它推斷為節點型別，呼叫 HUD 自訂的 `update_stars` 時可能被型別檢查擋下。這裡先不標型別讓範例能執行；更好的做法是在 HUD 腳本開頭加上 `class_name Hud`，再寫成 `@onready var hud: Hud = $HUD`，編輯器就能完整檢查函式名稱與參數。
+- **`enum State { TITLE, PLAYING, WON, LOST }`**：`enum` 其實是一組具名的整數常數。宣告 `var state: State` 後，編輯器只接受這四個值，打錯名稱會立刻標紅。
+- **`is_playing()` 守衛**：收集、受傷、計時都依賴同一個判斷，規則不會各寫各的。
+- **`WAVES[index]["stars"]`**：從字典讀出的值型別是 `Variant`，迴圈次數用 `int(...)` 明確轉成整數，閱讀時也比較清楚。
+- **`static var skip_title`**：一般的成員變數會隨場景重新載入而重設；`static var` 跟著腳本資源，重開後仍保留。
+- **`create_timer(0.8).timeout.connect(next_wave)`**：`SceneTreeTimer` 用完會自動釋放，不必自己加 `Timer` 節點。連接到方法而不是 lambda，可以避免重開後回呼舊場景。
+- **`draw_heart(center, full)`**：愛心是兩個圓加一個三角形。生命數只決定用紅色或半透明的空心色畫，HUD 不知道受傷規則。
+- **HUD 只顯示，不判斷**：勝負、波次全部在 `main.gd`；HUD 只提供 `show_message()`、`show_banner()` 這類顯示函式。之後想換畫面風格，不會動到規則。
 
 ## 交給 agent 的提示詞
 
 <AgentTask
-  title="稽核狀態轉換"
-  prompt={`這是 Godot 4.x GDScript 2D 收集遊戲。主場景用 enum 管理 PLAYING、WON、LOST 三種狀態，HUD 是 CanvasLayer。請先不要修改檔案。
-1. 閱讀主場景、HUD、玩家、星星、障礙物的腳本，列出所有會改變 state、stars_collected、hits 的程式位置。
-2. 逐一檢查以下情境是否會出錯並說明原因：獲勝後碰到障礙、失敗後碰到星星、同一影格同時撿到第 10 顆星並受到第 3 次傷害、暫停時按 R。
-3. 檢查各節點的 process_mode 設定（從 .tscn 讀取），說明暫停時哪些節點仍在運作。
-4. 若發現問題，提出最小修改方案並標示要改的檔案，等我同意後再改。`}
+  title="調整波次難度（只改資料）"
+  prompt={`這是 Godot 4.7 GDScript 的 2D 收集閃避遊戲「星星花園」。scripts/main.gd 有 const WAVES 資料表與 enum State { TITLE, PLAYING, WON, LOST }。
+任務：讓第 3 波更有挑戰，但總星星數仍是 10 顆。
+要求：
+1. 先閱讀 scripts/main.gd 的 WAVES、start_wave、collect_item、finish_wave，用三到五句說明目前每一波的星星數、追蹤者數量與速度，等我確認後再修改。
+2. 只修改 WAVES 的數值，不改函式，不新增節點。
+3. 追蹤者速度不得超過玩家的 speed（scripts/player.gd），否則玩家無法逃開；在回報中列出兩個數字對照。
+4. 修改後執行 godot --headless --path . --quit-after 240 2>&1 | tail -n 30，貼出結果。
+5. 告訴我在遊戲視窗中要觀察哪三件事，確認第 3 波確實變難但仍可過關。`}
 />
 
 ## 自我檢查
 
-- [ ] 左上角即時顯示「星星 x / 10」與「受傷 x / 3」。
-- [ ] 加入 `Camera2D` 並移動時，HUD 固定不動。
-- [ ] 獲勝或失敗時畫面中央出現結果面板，障礙物停止移動。
-- [ ] 結果面板出現後碰不到任何東西，數字不再變化。
-- [ ] 按 R 能從獲勝或失敗畫面重開，且新的一局沒有被暫停。
-- [ ] 把視窗拉大或縮小，HUD 仍貼在左上、結果面板仍置中。
+- [ ] 開啟遊戲先看到標題面板，按 Enter 或手把 A 才開始。
+- [ ] 左上角的愛心會隨受傷減少，波次燈號隨波次亮起。
+- [ ] 收完第 1 波的 3 顆星星後，敵人消失，約 0.8 秒後出現「WAVE 2」橫幅與新的星星。
+- [ ] 第 3 波收完後顯示「YOU WIN!」與時間；生命歸零則顯示「GAME OVER」。
+- [ ] 結算畫面出現後，碰到敵人或星星都不再改變數字，計時器也停止。
+- [ ] 按 R 會直接重新開始，不再出現標題。
 
 ## 練習
 
-1. 在結果面板加一個 `Button`「再玩一次」，用 `pressed` 訊號觸發和 R 相同的重開函式（記得按鈕節點的 Process Mode 要能在暫停時運作）。
-2. 加入第四個狀態 `READY`：遊戲開始時顯示「按任意方向鍵開始」，玩家第一次移動才進入 `PLAYING`。更新狀態表。
-3. 用 `Theme` 資源統一所有 `Label` 的字型大小與顏色，而不是一個個調整。
+1. 在 `enum State` 加入 `PAUSED`：按 Esc 時在 `PLAYING` 與 `PAUSED` 間切換，並更新狀態表。想一想：只改 `is_playing()` 是否就足以讓所有規則暫停？敵人的移動呢？
+2. 在 `WAVES` 每一筆加入 `"name"` 欄位（例如 `"Dusk"`、`"Night"`、`"Storm"`），讓橫幅顯示波次名稱。
+3. 把 HUD 的計時器改成「本波剩餘時間」，超時就扣一條命。先寫下新的狀態表，再動手。
 
 ## 常見錯誤與限制
 
-- **HUD 跟著鏡頭跑**：UI 沒有放在 `CanvasLayer` 底下。
-- **按 R 沒反應**：處理輸入的節點被暫停了，檢查它的 `Process Mode`。
-- **重開後一開始就暫停**：重新載入前沒有把 `paused` 設回 `false`。
-- **UI 擋住遊戲的滑鼠或觸控輸入**：`Control` 節點預設會攔截滑鼠事件，把不需要互動的 UI 的 `Mouse → Filter` 設為 `Ignore`。
-- **中文字顯示成方塊**：預設字型可能不含你需要的中文字。可以匯入一個授權允許嵌入的開源中文字型（例如 Noto Sans TC，採 SIL Open Font License），在專案設定的 GUI 主題中設為預設字型。Web 版尤其要注意，因為瀏覽器中無法使用系統字型作為後備。
+- **贏了之後還會扣血**：某個事件處理函式忘了開頭的 `if not is_playing(): return`。
+- **HUD 跟著畫面震動**：HUD 沒有放在 `CanvasLayer` 底下。
+- **HUD 擋住滑鼠點擊**：`Control` 預設會攔截滑鼠事件，把不需互動的 HUD 的 `Mouse → Filter` 設為 `Ignore`。
+- **重開後第 2 波突然出現**：計時器回呼用 lambda 捕捉了舊場景。改成連接到方法，並在 `next_wave()` 再檢查一次狀態。
+- **數字改了但畫面沒更新**：自訂 `_draw()` 只在需要時重畫，數值改變後要呼叫 `queue_redraw()`。
+- **中文字顯示成方塊**：Godot 預設字型不含中文。範例的遊戲內文字使用英文；若要顯示中文，匯入授權允許嵌入的中文字型（例如 SIL Open Font License 的 Noto Sans TC），在專案設定的 GUI 主題中設為預設字型。
 
-下一章加入音效與回饋：[11｜音效與手感潤飾](../11-audio-polish/)。
+下一章加入音效、背景 shader、畫面震動與最佳紀錄：[11｜音效與手感潤飾](../11-audio-polish/)。
 
 ## 對照可下載的階段專案
 
-上面的操作讓你練習手動建立節點；下載版用程式建立同樣職責的物件，節點在執行後才出現在 Remote 場景樹。請以遊戲行為對照，並用以下原始碼認識另一種組合方式。
+上面的操作讓你練習手動建立節點；下載版用程式建立同樣職責的物件，節點在執行後才出現在 Remote 場景樹。重點是行為一致，寫法不必一樣。
 
-<SourceExcerpt dimension="2d" stage="04-interface" file="main" method="update_hud" />
+<SourceExcerpt dimension="2d" stage="04-interface" file="main" method="start_wave" />
+
+<SourceExcerpt dimension="2d" stage="04-interface" file="main" method="finish_wave" />
+
+<SourceExcerpt dimension="2d" stage="04-interface" file="hud" method="draw_heart" />
 
 ## 官方參考
 
+- GDScript 參考（enum、static 變數）：https://docs.godotengine.org/en/4.7/tutorials/scripting/gdscript/gdscript_basics.html
 - CanvasLayer：https://docs.godotengine.org/en/4.7/tutorials/2d/canvas_layers.html
-- 使用容器：https://docs.godotengine.org/en/4.7/tutorials/ui/gui_containers.html
-- 暫停遊戲與 Process Mode：https://docs.godotengine.org/en/4.7/tutorials/scripting/pausing_games.html
-- 場景唯一節點：https://docs.godotengine.org/en/4.7/tutorials/scripting/scene_unique_nodes.html
+- 自訂繪圖 `_draw()`：https://docs.godotengine.org/en/4.7/tutorials/2d/custom_drawing_in_2d.html
+- Tween：https://docs.godotengine.org/en/4.7/classes/class_tween.html
+- SceneTree.create_timer：https://docs.godotengine.org/en/4.7/classes/class_scenetree.html

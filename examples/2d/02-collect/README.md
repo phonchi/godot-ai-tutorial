@@ -1,7 +1,7 @@
-# 2D 02-collect
+# Star Garden — 2D 02-collect
 
-Open `project.godot` in Godot 4.7.2, then press F6 with `main.tscn` open or F5.
+Ten stars: Area2D signals, a Tween pop and a particle burst. Collect all ten to win.
 
-WASD / arrow keys: move. R: restart. Gold circles: collect. Red diamonds: avoid. Ten collected wins; three hits loses.
+Open `project.godot` in Godot 4.7.2 and press F5. WASD / arrow keys / left stick: move. Shift or Space / gamepad B: dash. R / gamepad Back: restart.
 
-Procedural original graphics; no external assets. Generated collect sound is CC0. Code: MIT.
+All graphics are drawn in code. Code: MIT.

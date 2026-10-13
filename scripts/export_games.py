@@ -4,7 +4,7 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 engine=Path(os.environ.get('GODOT_BIN',ROOT/'.tools/godot/Godot_v4.7.2-stable_linux.x86_64'))
 template=ROOT/'.tools/templates/web/web_nothreads_release.zip'
-for dim,stage in [('2d','05-final'),('3d','03-final')]:
+for dim,stage in [('2d','05-final'),('3d','04-final')]:
  source=ROOT/'examples'/dim/stage
  work=ROOT/'.tools/export'/dim
  shutil.copytree(source,work,dirs_exist_ok=True,ignore=shutil.ignore_patterns('.godot'))

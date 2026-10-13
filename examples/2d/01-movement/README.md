@@ -1,7 +1,7 @@
-# 2D 01-movement
+# Star Garden — 2D 01-movement
 
-Open `project.godot` in Godot 4.7.2, then press F6 with `main.tscn` open or F5.
+Smooth movement with acceleration and friction, plus a dash with cooldown.
 
-WASD / arrow keys: move. R: restart. Gold circles: collect. Red diamonds: avoid. Ten collected wins; three hits loses.
+Open `project.godot` in Godot 4.7.2 and press F5. WASD / arrow keys / left stick: move. Shift or Space / gamepad B: dash. R / gamepad Back: restart.
 
-Procedural original graphics; no external assets. Generated collect sound is CC0. Code: MIT.
+All graphics are drawn in code. Code: MIT.

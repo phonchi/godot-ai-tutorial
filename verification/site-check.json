@@ -1,47 +1,52 @@
 {
   "html_pages": 26,
-  "internal_links_checked": 1904,
+  "internal_links_checked": 1994,
   "errors": [],
   "archives": [
     {
       "name": "2d-01-movement.zip",
-      "files": 16,
-      "bytes": 15437
+      "files": 12,
+      "bytes": 6588
     },
     {
       "name": "2d-02-collect.zip",
-      "files": 16,
-      "bytes": 15403
+      "files": 14,
+      "bytes": 8410
     },
     {
       "name": "2d-03-hazards.zip",
       "files": 16,
-      "bytes": 15407
+      "bytes": 10405
     },
     {
       "name": "2d-04-interface.zip",
-      "files": 16,
-      "bytes": 15469
+      "files": 18,
+      "bytes": 12707
     },
     {
       "name": "2d-05-final.zip",
-      "files": 18,
-      "bytes": 16570
+      "files": 34,
+      "bytes": 112943
     },
     {
       "name": "3d-01-world.zip",
       "files": 12,
-      "bytes": 6218
+      "bytes": 7452
     },
     {
       "name": "3d-02-controller.zip",
       "files": 12,
-      "bytes": 6341
+      "bytes": 8312
     },
     {
-      "name": "3d-03-final.zip",
-      "files": 14,
-      "bytes": 7451
+      "name": "3d-03-platforms.zip",
+      "files": 16,
+      "bytes": 11273
+    },
+    {
+      "name": "3d-04-final.zip",
+      "files": 32,
+      "bytes": 120918
     }
   ]
 }

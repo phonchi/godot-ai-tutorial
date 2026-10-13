@@ -1,6 +1,6 @@
 # Godot × AI 遊戲開發
 
-繁體中文 Godot 4.7.2 教學：18 章、Claude Code／Codex 協作、2D 收集閃避與 3D 探索。
+繁體中文 Godot 4.7.2 教學：18 章、Claude Code／Codex 協作，做出 2D「星星花園」與 3D「浮空島」兩款遊戲。
 
 - 網站：https://phonchi.github.io/godot-ai-tutorial/
 - 教材：`src/content/docs/lessons/`
@@ -27,7 +27,7 @@ npm run preview
 ## 重建範例
 
 ```bash
-python3 scripts/build_examples.py
+python3 scripts/build_examples.py   # 由 scripts/templates/ 產生 9 個階段專案與 ZIP
 GODOT_BIN=/absolute/path/to/godot python3 scripts/build_examples.py --test
 ```
 

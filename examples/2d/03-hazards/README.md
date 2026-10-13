@@ -1,7 +1,7 @@
-# 2D 03-hazards
+# Star Garden — 2D 03-hazards
 
-Open `project.godot` in Godot 4.7.2, then press F6 with `main.tscn` open or F5.
+Chasers steer toward you, bouncers ricochet, a Timer adds more. Three hits and you lose.
 
-WASD / arrow keys: move. R: restart. Gold circles: collect. Red diamonds: avoid. Ten collected wins; three hits loses.
+Open `project.godot` in Godot 4.7.2 and press F5. WASD / arrow keys / left stick: move. Shift or Space / gamepad B: dash. R / gamepad Back: restart.
 
-Procedural original graphics; no external assets. Generated collect sound is CC0. Code: MIT.
+All graphics are drawn in code. Code: MIT.
